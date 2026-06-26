@@ -452,6 +452,28 @@ public final class InputLogic {
             return inputTransaction;
         }
 
+        if (suggestionInfo.isKindOf(SuggestedWordInfo.KIND_AUTOFILL)) {
+            inputTransaction.setRequiresUpdateSuggestions();
+            inputTransaction.requireShiftUpdate(InputTransaction.SHIFT_UPDATE_NOW);
+
+            mConnection.beginBatchEdit();
+            mConnection.finishComposingText();
+            mWordComposer.reset(true);
+            resetComposingState(true /* alsoResetLastComposedWord */);
+
+            final int replaceLength = getAutofillReplaceLength(suggestionInfo);
+            if (replaceLength > 0) {
+                mConnection.deleteTextBeforeCursor(replaceLength);
+            }
+            mConnection.commitText(suggestion, 1);
+            mConnection.endBatchEdit();
+
+            mLastComposedWord.deactivate();
+            mSpaceState = SpaceState.NONE;
+            mIme.onAutofillSuggestionAccepted(suggestionInfo);
+            return inputTransaction;
+        }
+
         if(mWordComposer.isComposingWord()) {
             rememberSuggestedWords(mConnection.getExpectedSelectionStart() - mWordComposer.sizeBeforeCursor(),
                     suggestion, suggestedWords);
@@ -511,6 +533,19 @@ public final class InputLogic {
         StatsUtils.onWordCommitSuggestionPickedManually(
                 suggestionInfo.mWord, mWordComposer.isBatchMode());
         return inputTransaction;
+    }
+
+    private static int getAutofillReplaceLength(final SuggestedWordInfo suggestionInfo) {
+        final String context = suggestionInfo.mPrevWordsContext;
+        final String prefix = "field_autofill:";
+        if (context == null || !context.startsWith(prefix)) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(context.substring(prefix.length())));
+        } catch (final NumberFormatException e) {
+            return 0;
+        }
     }
 
     /**

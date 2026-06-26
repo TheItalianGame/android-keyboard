@@ -1,0 +1,19 @@
+name = "xloidflare"
+main = "src/index.js"
+compatibility_date = "2026-06-23"
+account_id = "429d20e2971fc2ad19c63b4780c18b3b"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "ClipboardRoom"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "xloidflare-shares"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ClipboardRoom"]

@@ -255,21 +255,7 @@ fun SettingItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(Modifier.weight(1.0f).fillMaxHeight().padding(0.dp, 4.dp)) {
-            Spacer(Modifier.width(4.dp))
             Spacer(Modifier.width(16.dp))
-            Column(
-                modifier = Modifier
-                    .width(48.dp)
-                    .align(Alignment.CenterVertically)
-            ) {
-                Box(modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                    if (icon != null) {
-                        icon()
-                    }
-                }
-            }
-
-            Spacer(Modifier.width(12.dp))
 
             Row(
                 modifier = Modifier

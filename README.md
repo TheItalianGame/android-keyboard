@@ -1,39 +1,120 @@
-# FUTO Keyboard
+# FUTO Android Keyboard Fork
 
-The goal is to make a good modern keyboard that stays offline and doesn't spy on you. This keyboard is a fork of [LatinIME, The Android Open-Source Keyboard](https://android.googlesource.com/platform/packages/inputmethods/LatinIME), with significant changes made to it.
+This checkout is a Termux-buildable fork of FUTO Keyboard with local Android build shims and experimental keyboard-owned autofill work.
 
-Check out the [FUTO Keyboard website](https://keyboard.futo.org/) for downloads and more information.
+FUTO Keyboard is a privacy-focused Android keyboard forked from LatinIME. The upstream project is maintained by FUTO and remains licensed under the [FUTO Source First License 1.1](LICENSE.md). This fork keeps that offline-first direction while adding local development support and custom features.
 
-The code is licensed under the [FUTO Source First License 1.1](LICENSE.md).
+## What This Fork Adds
 
-## Issue tracking and contributing
+- Termux build support for Android without relying on a desktop Android Studio setup.
+- A prebuilt native library path for builds that should not rebuild LatinIME native code.
+- Keyboard-owned field autofill suggestions based on field names, hints, input type, and previously typed values.
+- Local clipboard/sync experiments and supporting Android settings.
+- Local model comparison and native build helper scripts used during development.
 
-Please check the GitHub repository to report issues: [https://github.com/futo-org/android-keyboard/](https://github.com/futo-org/android-keyboard/)
+## Field Autofill
 
-The source code is hosted on our [internal GitLab](https://gitlab.futo.org/keyboard/latinime) and mirrored to [GitHub](https://github.com/futo-org/android-keyboard/). As registration is closed on our internal GitLab, we use GitHub instead for issues and pull requests.
+The field autofill feature learns complete values from recognized form fields and offers them as suggestion-row chips. It is keyboard-owned, local to the app data directory, and tap-to-fill only.
 
-Due to custom license, pull requests to this repository require signing a [CLA](https://cla.futo.org/) which you can do after opening a PR. Contributions to the [layouts repo](https://github.com/futo-org/futo-keyboard-layouts) don't require CLA as they're Apache-2.0
+Recognized field types include:
 
-If you want to help translate the app, please do so via our Pontoon instance: https://i18n-keyboard.futo.org/
+- email
+- phone
+- first name
+- last name
+- full name
+- username
+- organization
+- address
+- city
+- state or province
+- ZIP or postal code
 
-## Layouts
+The classifier uses Android `EditorInfo` metadata such as field name, hint text, label, input type, private IME options, and extras keys. Suggestions are ranked by exact field identity first, then by app/session context and usage.
 
-If you want to contribute layouts, check out the [layouts repo](https://github.com/futo-org/futo-keyboard-layouts).
+Autofill is intentionally blocked for sensitive or unsuitable fields:
 
-## Building
+- password fields
+- OTP, code, PIN, token, CVV/CVC, card, SSN-like fields
+- URL fields
+- fields marked with no personalized learning
+- fields rejected by basic type validation
 
-When cloning the repository, you must perform a recursive clone to fetch all dependencies:
+The feature is controlled by **Keyboard settings -> Field autofill** and also requires personalized suggestions to be enabled.
+
+## Termux Build
+
+Use the real repo under Termux-private storage:
+
+```sh
+cd /data/data/com.termux/files/home/Documents/android-keyboard
 ```
-git clone --recursive https://gitlab.futo.org/keyboard/latinime.git
+
+Do not build from:
+
+```sh
+/storage/emulated/0/Documents/android-keyboard
 ```
 
-If you forgot to specify recursive clone, use this to fetch submodules:
-```
-git submodule update --init --recursive
+The shared-storage copy can break symlinks and is not build-safe.
+
+This checkout uses local shims documented in [build.md](build.md). The important pieces are:
+
+- `local.properties` points at `.android-sdk`
+- `.android-sdk/build-tools/35.0.0/aapt2` is the Termux-compatible aapt2 wrapper
+- `prebuilt-jni/arm64-v8a/libjni_latinime.so` is used when `-PtermuxPrebuiltNative` is passed
+
+Reliable debug build:
+
+```sh
+mkdir -p logs
+./gradlew \
+  -PtermuxPrebuiltNative \
+  -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/home/Documents/android-keyboard/.android-sdk/build-tools/35.0.0/aapt2 \
+  assembleUnstableDebug \
+  > logs/build-unstable-debug.log 2>&1
 ```
 
-You can then open the project in Android Studio and build it that way, or use gradle commands:
+Expected APK:
+
+```sh
+build/outputs/apk/unstable/debug/android-keyboard-unstable-debug.apk
 ```
-./gradlew assembleUnstableDebug
-./gradlew assembleStableRelease
+
+Copy and open installer:
+
+```sh
+cp build/outputs/apk/unstable/debug/android-keyboard-unstable-debug.apk \
+  /storage/emulated/0/Download/android-keyboard-unstable-debug.apk
+
+termux-open /storage/emulated/0/Download/android-keyboard-unstable-debug.apk
 ```
+
+## Development Notes
+
+- Keep `.android-sdk/`, `.sdk-setup/`, `prebuilt-jni/`, `build-termux-native/`, and `local.properties` in place for local builds.
+- Do not commit generated APKs, Gradle caches, build logs, or machine-specific SDK directories unless there is a specific reason.
+- Use `build.md` as the source of truth for the Termux build setup.
+- Build verification used for this fork:
+
+```sh
+./gradlew -PtermuxPrebuiltNative \
+  -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/home/Documents/android-keyboard/.android-sdk/build-tools/35.0.0/aapt2 \
+  assembleUnstableDebug
+```
+
+## Upstream Project
+
+Original upstream repository:
+
+```text
+https://github.com/futo-org/android-keyboard
+```
+
+FUTO Keyboard website:
+
+```text
+https://keyboard.futo.org/
+```
+
+For upstream contributions, follow the FUTO CLA and contribution rules from the original project.

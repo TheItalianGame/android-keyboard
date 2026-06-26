@@ -371,7 +371,7 @@ val THEME_KEY = SettingsKey(
 
 val USE_SYSTEM_VOICE_INPUT = SettingsKey(
     key = booleanPreferencesKey("useSystemVoiceInput"),
-    default = false
+    default = true
 )
 
 val USE_TRANSFORMER_FINETUNING = SettingsKey(

@@ -1,8 +1,12 @@
 package org.futo.inputmethod.latin
 
 import android.app.Application
+import android.content.ContentValues
 import android.content.Context
+import android.os.Build
+import android.os.Environment
 import android.os.UserManager
+import android.provider.MediaStore
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.datastore.preferences.core.Preferences
@@ -24,7 +28,74 @@ import org.futo.inputmethod.latin.uix.settings.LocalDataStoreCache
 import org.futo.inputmethod.latin.uix.settings.NavigationItem
 import org.futo.inputmethod.latin.uix.settings.NavigationItemStyle
 import org.futo.inputmethod.latin.uix.settings.pages.copyToClipboard
+import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.collections.plus
+
+object LocalDebugLog {
+    private val dateFormat = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US)
+
+    fun write(context: Context, prefix: String, text: String) {
+        try {
+            val filename = "$prefix-${dateFormat.format(Date())}.txt"
+            val body = buildString {
+                append("time=").append(Date()).append('\n')
+                append("package=").append(context.packageName).append('\n')
+                append("version=").append(BuildConfig.VERSION_NAME).append('\n')
+                append('\n')
+                append(text)
+                append('\n')
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+
+                val uri = context.contentResolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    values
+                ) ?: return
+
+                context.contentResolver.openOutputStream(uri)?.use {
+                    it.write(body.toByteArray(Charsets.UTF_8))
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val file = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    filename
+                )
+                file.writeText(body)
+            }
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
+    }
+
+    fun installJavaCrashHandler(context: Context) {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            val stack = StringWriter().also {
+                throwable.printStackTrace(PrintWriter(it))
+            }.toString()
+
+            write(
+                context,
+                "futo-keyboard-java-crash",
+                "thread=${thread.name}\n\n$stack"
+            )
+
+            previous?.uncaughtException(thread, throwable)
+        }
+    }
+}
 
 class CrashLoggingApplication : Application() /*, Configuration.Provider*/ {
     //override val workManagerConfiguration: Configuration
@@ -32,6 +103,7 @@ class CrashLoggingApplication : Application() /*, Configuration.Provider*/ {
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
+        LocalDebugLog.installJavaCrashHandler(this)
 
         if(isDirectBootUnlocked) {
             try {

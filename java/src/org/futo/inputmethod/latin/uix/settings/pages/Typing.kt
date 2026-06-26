@@ -1,7 +1,10 @@
 package org.futo.inputmethod.latin.uix.settings.pages
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -29,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,9 +70,13 @@ import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.drawText
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.PlatformImeOptions
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.TextInputSession
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -76,6 +84,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.graphics.drawable.toBitmap
+import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -129,6 +138,13 @@ import org.futo.inputmethod.latin.uix.settings.userSettingDecorationOnly
 import org.futo.inputmethod.latin.uix.settings.userSettingNavigationItem
 import org.futo.inputmethod.latin.uix.settings.userSettingToggleDataStore
 import org.futo.inputmethod.latin.uix.settings.userSettingToggleSharedPrefs
+import org.futo.inputmethod.latin.uix.actions.clipboard.ScreenshotHelper
+import org.futo.inputmethod.latin.uix.sync.XloidClipboardSyncEnabled
+import org.futo.inputmethod.latin.uix.sync.XloidClipboardSyncPairId
+import org.futo.inputmethod.latin.uix.sync.XloidClipboardSyncRelayToken
+import org.futo.inputmethod.latin.uix.sync.XloidClipboardSyncRoomUrl
+import org.futo.inputmethod.latin.uix.sync.XloidClipboardSyncScreenshots
+import org.futo.inputmethod.latin.uix.sync.XloidClipboardSyncService
 import org.futo.inputmethod.latin.uix.theme.Typography
 import org.futo.inputmethod.v2keyboard.KeyboardSettings
 import kotlin.math.absoluteValue
@@ -152,6 +168,11 @@ val ActionBarDisplayedSetting = SettingsKey(
 
 val InlineAutofillSetting = SettingsKey(
     booleanPreferencesKey("inline_autofill"),
+    true
+)
+
+val FieldAutofillSetting = SettingsKey(
+    booleanPreferencesKey("field_autofill"),
     true
 )
 
@@ -691,6 +712,30 @@ private fun AutoSpacesSetting() {
     )
 }
 
+@Composable
+private fun ClipboardSyncTextField(
+    title: String,
+    placeholder: String,
+    setting: SettingsKey<String>,
+    password: Boolean = false
+) {
+    val value = useDataStore(setting)
+    TextField(
+        value = value.value,
+        onValueChange = { value.setValue(it) },
+        label = { Text(title) },
+        placeholder = { Text(placeholder) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (password) KeyboardType.Password else KeyboardType.Text
+        ),
+        visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp, 4.dp)
+    )
+}
+
 val NumberRowSettingMenu = UserSettingsMenu(
     title = R.string.keyboard_settings_number_row_title,
     navPath = "numberRow", registerNavPath = true,
@@ -839,6 +884,11 @@ val KeyboardSettingsMenu = UserSettingsMenu(
             subtitle = R.string.keyboard_settings_inline_autofill_subtitle,
             setting = InlineAutofillSetting
         ),
+        userSettingToggleDataStore(
+            title = R.string.keyboard_settings_field_autofill,
+            subtitle = R.string.keyboard_settings_field_autofill_subtitle,
+            setting = FieldAutofillSetting
+        ),
         userSettingToggleSharedPrefs(
             title = R.string.keyboard_settings_period_key,
             subtitle = R.string.keyboard_settings_period_key_subtitle2,
@@ -893,6 +943,101 @@ val TypingSettingsMenu = UserSettingsMenu(
             title = R.string.typing_settings_delete_pasted_text_on_backspace,
             key = Settings.PREF_BACKSPACE_DELETE_INSERTED_TEXT,
             default = {true}
+        ),
+        UserSetting(
+            name = R.string.clipboard_sync_settings_enable,
+            subtitle = R.string.clipboard_sync_settings_enable_subtitle,
+            component = {
+                val context = LocalContext.current
+                val setting = useDataStore(XloidClipboardSyncEnabled)
+
+                LaunchedEffect(setting.value) {
+                    if (setting.value) {
+                        XloidClipboardSyncService.start(context)
+                    }
+                }
+
+                SettingToggleRaw(
+                    title = stringResource(R.string.clipboard_sync_settings_enable),
+                    subtitle = stringResource(R.string.clipboard_sync_settings_enable_subtitle),
+                    enabled = setting.value,
+                    setValue = { enabled ->
+                        setting.setValue(enabled)
+                        if (enabled) {
+                            XloidClipboardSyncService.start(context)
+                        } else {
+                            XloidClipboardSyncService.stop(context)
+                        }
+                    }
+                )
+            }
+        ),
+        UserSetting(
+            name = R.string.clipboard_sync_settings_screenshots,
+            visibilityCheck = { useDataStore(XloidClipboardSyncEnabled).value },
+            component = {
+                val context = LocalContext.current
+                val setting = useDataStore(XloidClipboardSyncScreenshots)
+                val permission = ScreenshotHelper.permission
+                val launcher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { isGranted ->
+                    setting.setValue(isGranted)
+                }
+
+                SettingToggleRaw(
+                    title = stringResource(R.string.clipboard_sync_settings_screenshots),
+                    subtitle = if (setting.value) null else stringResource(R.string.clipboard_sync_settings_screenshots_subtitle),
+                    enabled = setting.value,
+                    setValue = { enabled ->
+                        if (!enabled) {
+                            setting.setValue(false)
+                        } else if (ContextCompat.checkSelfPermission(
+                                context,
+                                permission
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            setting.setValue(true)
+                        } else {
+                            launcher.launch(permission)
+                        }
+                    }
+                )
+            }
+        ),
+        UserSetting(
+            name = R.string.clipboard_sync_settings_url,
+            visibilityCheck = { useDataStore(XloidClipboardSyncEnabled).value },
+            component = {
+                ClipboardSyncTextField(
+                    title = stringResource(R.string.clipboard_sync_settings_url),
+                    placeholder = stringResource(R.string.clipboard_sync_settings_url_placeholder),
+                    setting = XloidClipboardSyncRoomUrl
+                )
+            }
+        ),
+        UserSetting(
+            name = R.string.clipboard_sync_settings_pair_id,
+            visibilityCheck = { useDataStore(XloidClipboardSyncEnabled).value },
+            component = {
+                ClipboardSyncTextField(
+                    title = stringResource(R.string.clipboard_sync_settings_pair_id),
+                    placeholder = stringResource(R.string.clipboard_sync_settings_pair_id_placeholder),
+                    setting = XloidClipboardSyncPairId
+                )
+            }
+        ),
+        UserSetting(
+            name = R.string.clipboard_sync_settings_token,
+            visibilityCheck = { useDataStore(XloidClipboardSyncEnabled).value },
+            component = {
+                ClipboardSyncTextField(
+                    title = stringResource(R.string.clipboard_sync_settings_token),
+                    placeholder = stringResource(R.string.clipboard_sync_settings_token_placeholder),
+                    setting = XloidClipboardSyncRelayToken,
+                    password = true
+                )
+            }
         ),
         userSettingToggleSharedPrefs(
             title = R.string.typing_settings_revert_correction_on_backspace,

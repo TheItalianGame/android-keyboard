@@ -8,6 +8,7 @@ option(EXT_BUILD        "External build" OFF)
 option(EXT_BUILD_ASAN   "External build with ASAN" OFF)
 option(FLAG_DBG         "Enable debug build" OFF)
 option(FLAG_DO_PROFILE  "Enable profiling build" OFF)
+option(BUILD_LM_CONTEXT_BENCH "Build standalone language model context benchmark" OFF)
 
 
 # ------------------------------------------------------------------
@@ -47,7 +48,7 @@ if(EXT_BUILD_ASAN)
 endif()
 
 # Enable NEON unconditionally (same as LOCAL_ARM_NEON := true)
-if(${ANDROID_ABI} MATCHES "armeabi-v7a")
+if(DEFINED ANDROID_ABI AND ANDROID_ABI MATCHES "armeabi-v7a")
     add_compile_options(-mfpu=neon)
 endif()
 
@@ -64,6 +65,17 @@ add_library(jni_latinime_common_static STATIC ${LATIN_IME_CORE_SRC_FILES})
 target_include_directories(jni_latinime_common_static PRIVATE ${LATIN_IME_CORE_INCLUDE})
 if(EXT_BUILD)
     target_include_directories(jni_latinime_common_static PRIVATE ${JNI_INCLUDE_DIRS})
+endif()
+
+if(BUILD_LM_CONTEXT_BENCH)
+    add_executable(lm_context_bench tools/lm_context_bench.cpp)
+
+    target_include_directories(lm_context_bench PRIVATE ${LATIN_IME_CORE_INCLUDE})
+
+    target_link_libraries(lm_context_bench
+            jni_latinime_common_static
+            log
+            dl)
 endif()
 
 if(FLAG_DO_PROFILE)

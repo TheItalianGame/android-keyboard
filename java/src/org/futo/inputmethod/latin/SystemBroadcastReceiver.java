@@ -24,6 +24,7 @@ import android.util.Log;
 import android.view.inputmethod.InputMethodManager;
 
 import org.futo.inputmethod.latin.utils.UncachedInputMethodManagerUtils;
+import org.futo.inputmethod.latin.uix.sync.XloidClipboardSyncService;
 import org.futo.inputmethod.v2keyboard.KeyboardLayoutSetV2;
 
 /**
@@ -58,8 +59,10 @@ public final class SystemBroadcastReceiver extends BroadcastReceiver {
         final String intentAction = intent.getAction();
         if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(intentAction)) {
             Log.i(TAG, "Package has been replaced: " + context.getPackageName());
+            XloidClipboardSyncService.startIfEnabled(context);
         } else if (Intent.ACTION_BOOT_COMPLETED.equals(intentAction)) {
             Log.i(TAG, "Boot has been completed");
+            XloidClipboardSyncService.startIfEnabled(context);
         } else if (Intent.ACTION_LOCALE_CHANGED.equals(intentAction)) {
             Log.i(TAG, "System locale changed");
             KeyboardLayoutSetV2.onSystemLocaleChanged();

@@ -26,6 +26,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- For clipboard manager reading screenshots -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -55,6 +56,15 @@
             </intent-filter>
             <meta-data android:name="android.view.im"
                  android:resource="@xml/method"/>
+        </service>
+
+        <service
+            android:name=".uix.sync.XloidClipboardSyncService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Live clipboard sync" />
         </service>
 
         <!--
@@ -110,6 +120,25 @@
                 <data android:mimeType="application/gguf"/>
             </intent-filter>
 
+        </activity>
+
+        <activity
+            android:name=".uix.sync.XloidShareActivity"
+            android:label="@string/clipboard_sync_share_target"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <activity android:name=".permissions.PermissionsActivity"

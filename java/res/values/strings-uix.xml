@@ -102,6 +102,20 @@
     <string name="action_clipboard_manager_settings_skip_delete_confirmation">Skip confirmation when deleting unpinned clips</string>
 
     <string name="action_clipboard_manager_settings_show_quick_clips">Show recently copied text in suggestion bar</string>
+    <string name="clipboard_sync_settings_enable">Sync clipboard to Windows</string>
+    <string name="clipboard_sync_settings_enable_subtitle">Live sync text and images through your Cloudflare Worker</string>
+    <string name="clipboard_sync_settings_url">Sync relay URL</string>
+    <string name="clipboard_sync_settings_pair_id">Pair ID</string>
+    <string name="clipboard_sync_settings_token">Relay token</string>
+    <string name="clipboard_sync_settings_screenshots">Sync screenshots</string>
+    <string name="clipboard_sync_settings_screenshots_subtitle">Watch the Screenshots folder and send new screenshots live</string>
+    <string name="clipboard_sync_settings_url_placeholder">wss://example.workers.dev/room</string>
+    <string name="clipboard_sync_settings_pair_id_placeholder">personal_devices</string>
+    <string name="clipboard_sync_settings_token_placeholder">Bearer token</string>
+    <string name="clipboard_sync_share_target">Share with Xloidflare</string>
+    <string name="clipboard_sync_notification_channel">Clipboard Sync</string>
+    <string name="clipboard_sync_notification_title">Clipboard sync running</string>
+    <string name="clipboard_sync_notification_body">Live clipboard sync is active</string>
 
     <!-- For keyboard modes action -->
     <string name="action_keyboard_modes_title">Keyboard Modes</string>
@@ -488,6 +502,8 @@
     <string name="keyboard_settings_show_suggestion_row_subtitle">Show the bar containing suggestions. Recommended to keep enabled</string>
     <string name="keyboard_settings_inline_autofill">Inline autofill</string>
     <string name="keyboard_settings_inline_autofill_subtitle">Display password manager autofill and auto-reply suggestions (provided by app) in suggestion bar</string>
+    <string name="keyboard_settings_field_autofill">Field autofill</string>
+    <string name="keyboard_settings_field_autofill_subtitle">Suggest saved form values from matching field names when personalized suggestions are enabled</string>
     <string name="keyboard_settings_period_key">Quick period key</string>
     <string name="keyboard_settings_period_key_subtitle2">Replaces the layout of long-pressed period key with a flickable layout: ! , . ?</string>
 
@@ -562,9 +578,9 @@
 
     <!-- Voice input settings menu -->
     <string name="voice_input_settings_title">Voice Input</string>
-    <string name="voice_input_settings_builtin_disabled_notice">Built-in voice input is disabled!</string>
-    <string name="voice_input_settings_disable_builtin_voice_input">Disable built-in voice input</string>
-    <string name="voice_input_settings_disable_builtin_voice_input_subtitle">Use voice input provided by external app</string>
+    <string name="voice_input_settings_builtin_disabled_notice">Using system voice input</string>
+    <string name="voice_input_settings_disable_builtin_voice_input">Use system voice input</string>
+    <string name="voice_input_settings_disable_builtin_voice_input_subtitle">Use Android or Google voice typing instead of FUTO local voice input</string>
     <string name="voice_input_settings_indication_sounds">Indication sounds</string>
     <string name="voice_input_settings_indication_sounds_subtitle">Play a short sound on start and cancel</string>
     <string name="voice_input_settings_verbose_progress">Verbose progress</string>

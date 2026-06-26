@@ -11,3 +11,26 @@ key.jks
 java/res/raw/mozc.data
 .cxx
 java/src/org/futo/inputmethod/keyboard/internal/KeyboardTextsTable.java
+
+# Local Termux build/download artifacts
+.android-sdk/
+.sdk-setup/
+.tmp-*/
+build-lm-context-bench/
+build-termux-native/
+logs/
+
+# Local Cloudflare/dev artifacts and secrets
+cloudflare/xloidflare/node_modules/
+cloudflare/xloidflare/.relay-token*
+cloudflare/xloidflare/metadata*.json
+cloudflare/xloidflare/.wrangler/
+
+# Local model experiments
+tools/qwen_compare_contexts.sh
+tools/smollm2_free_completion_test.sh
+tools/smollm2_quick_compare.sh
+tools/smollm2_structured_test.sh
+tools/smollm2_structured_test2.sh
+tools/structured_model_compare.sh
+tools/model_quick_compare.sh

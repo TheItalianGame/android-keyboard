@@ -74,6 +74,12 @@ def getBranch = { ->
     }
 }
 
+def javaStringLiteral = { String value ->
+    '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+}
+
+def xloidRelayTokenFile = file('cloudflare/xloidflare/.relay-token')
+def xloidRelayToken = xloidRelayTokenFile.exists() ? xloidRelayTokenFile.text.trim() : ""
 
 final def translationsWithoutEngValues = { final String path ->
     final def sourceDir = file(path)
@@ -172,6 +178,10 @@ android {
         testApplicationId 'org.futo.inputmethod.latin.tests'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = false
+
+        buildConfigField "String", "XLOIDFLARE_DEFAULT_ROOM_URL", javaStringLiteral("wss://xloidflare.talesfromanother.workers.dev/room")
+        buildConfigField "String", "XLOIDFLARE_DEFAULT_PAIR_ID", javaStringLiteral("personal_devices")
+        buildConfigField "String", "XLOIDFLARE_RELAY_TOKEN", javaStringLiteral(xloidRelayToken)
     }
 
     bundle {
@@ -303,6 +313,9 @@ android {
             java.srcDirs = ['common/src', 'java/src']
             manifest.srcFile 'java/AndroidManifest.xml'
             assets.srcDirs = ['java/assets']
+            if (project.hasProperty('termuxPrebuiltNative')) {
+                jniLibs.srcDirs = ['prebuilt-jni']
+            }
         }
 
         playstore {
@@ -344,9 +357,11 @@ android {
     }
 
     ndkVersion '28.2.13676358'
-    externalNativeBuild {
-        cmake {
-            path 'native/jni/CMakeLists.txt'
+    if (!project.hasProperty('termuxPrebuiltNative')) {
+        externalNativeBuild {
+            cmake {
+                path 'native/jni/CMakeLists.txt'
+            }
         }
     }
 

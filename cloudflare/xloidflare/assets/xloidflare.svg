@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="xloidflare icon">
+  <defs>
+    <linearGradient id="tile" x1="36" y1="18" x2="220" y2="238" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1d2730"/>
+      <stop offset="0.52" stop-color="#071015"/>
+      <stop offset="1" stop-color="#020609"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="41" y1="23" x2="215" y2="233" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7dfcff"/>
+      <stop offset="0.43" stop-color="#18b7ff"/>
+      <stop offset="1" stop-color="#b7ff35"/>
+    </linearGradient>
+    <linearGradient id="cloud" x1="61" y1="91" x2="195" y2="164" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f1ffff"/>
+      <stop offset="0.38" stop-color="#76f9ff"/>
+      <stop offset="1" stop-color="#18a7ff"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="134" y1="72" x2="105" y2="186" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8ff7a"/>
+      <stop offset="0.42" stop-color="#b7ff35"/>
+      <stop offset="1" stop-color="#00f0ff"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5.5" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="0 0 0 0 0.12  0 0 0 0 0.95  0 0 0 0 1  0 0 0 0.9 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="limeGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="0 0 0 0 0.7  0 0 0 0 1  0 0 0 0 0.12  0 0 0 0.85 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="round">
+      <rect x="12" y="12" width="232" height="232" rx="54"/>
+    </clipPath>
+  </defs>
+
+  <rect x="12" y="12" width="232" height="232" rx="54" fill="url(#tile)"/>
+  <g clip-path="url(#round)">
+    <path d="M20 49C66 20 139 24 195 61c31 21 49 53 54 91v92H9V87c3-15 7-28 11-38Z" fill="#0d1b22" opacity=".62"/>
+    <path d="M24 29h117c45 0 81 37 81 82v117H101c-44 0-77-36-77-80V29Z" fill="#ffffff" opacity=".045"/>
+    <path d="M25 183c31-8 54-6 82 6 36 15 74 20 128-12v73H25v-67Z" fill="#0af0ff" opacity=".08"/>
+  </g>
+  <rect x="16" y="16" width="224" height="224" rx="50" fill="none" stroke="url(#rim)" stroke-width="4" opacity=".9"/>
+  <rect x="28" y="28" width="200" height="200" rx="42" fill="none" stroke="#ffffff" stroke-width="1.5" opacity=".12"/>
+
+  <g filter="url(#glow)">
+    <path d="M81 157h93c20 0 36-15 36-34s-15-34-34-34c-5 0-10 1-14 3-8-20-28-34-51-34-29 0-53 22-56 51-18 3-31 17-31 35 0 20 16 33 57 33Z"
+      fill="none" stroke="url(#cloud)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M81 157h93c20 0 36-15 36-34s-15-34-34-34c-5 0-10 1-14 3-8-20-28-34-51-34-29 0-53 22-56 51-18 3-31 17-31 35 0 20 16 33 57 33Z"
+      fill="#071015" opacity=".72"/>
+  </g>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M76 123c13-26 42-40 72-33" stroke="#75fbff" stroke-width="10" opacity=".95"/>
+    <path d="M180 133c-15 25-45 37-75 28" stroke="#b7ff35" stroke-width="10" opacity=".95"/>
+    <path d="M145 78l20 16-27 5" stroke="#75fbff" stroke-width="10"/>
+    <path d="M105 178l-20-17 28-4" stroke="#b7ff35" stroke-width="10"/>
+  </g>
+
+  <g filter="url(#limeGlow)">
+    <path d="M136 74 91 138h33l-14 50 55-70h-36l7-44Z" fill="url(#bolt)"/>
+    <path d="M136 74 91 138h33l-14 50 55-70h-36l7-44Z" fill="none" stroke="#faffcf" stroke-width="3" opacity=".85" stroke-linejoin="round"/>
+  </g>
+
+  <path d="M70 202c23 13 54 19 87 13 28-5 51-20 63-40" fill="none" stroke="#7dfcff" stroke-width="4" opacity=".22" stroke-linecap="round"/>
+</svg>

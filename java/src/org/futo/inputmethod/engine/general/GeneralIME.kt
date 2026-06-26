@@ -39,6 +39,7 @@ import org.futo.inputmethod.latin.SuggestedWords.SuggestedWordInfo
 import org.futo.inputmethod.latin.SuggestionBlacklist
 import org.futo.inputmethod.latin.SwipeDecoderDictionary
 import org.futo.inputmethod.latin.WordComposer
+import org.futo.inputmethod.latin.autofill.FieldAutofillManager
 import org.futo.inputmethod.latin.common.Constants
 import org.futo.inputmethod.latin.common.InputPointers
 import org.futo.inputmethod.latin.inputlogic.InputLogic
@@ -114,6 +115,8 @@ class GeneralIME(val helper: IMEHelper) : IMEInterface, WordLearner, SuggestionS
     )
 
     private val settings = Settings.getInstance()
+
+    private val fieldAutofillManager = FieldAutofillManager(context)
 
     private val suggestionBlacklist = SuggestionBlacklist(
         settings,
@@ -244,6 +247,8 @@ class GeneralIME(val helper: IMEHelper) : IMEInterface, WordLearner, SuggestionS
     private val expandableExpandableCfg = ExpandableSuggestionBarConfiguration(true, false)
     private var expandableCfg: ExpandableSuggestionBarConfiguration = NonExpandableSuggestionBar
     override fun onStartInput() {
+        captureFieldAutofillValue()
+
         expandableCfg = if(helper.context.getSetting(UseExpandableSuggestionsForGeneralIME)) {
             expandableExpandableCfg
         } else {
@@ -258,6 +263,7 @@ class GeneralIME(val helper: IMEHelper) : IMEInterface, WordLearner, SuggestionS
             RichInputMethodManager.getInstance().combiningRulesExtraValueOfCurrentSubtype,
             settings.current
         )
+        fieldAutofillManager.onStartInput(helper.getCurrentEditorInfo(), settings.current.mInputAttributes)
 
         cancelSync()
     }
@@ -287,6 +293,7 @@ class GeneralIME(val helper: IMEHelper) : IMEInterface, WordLearner, SuggestionS
     }
 
     override fun onFinishInput() {
+        captureFieldAutofillValue()
         inputLogic.finishInput()
         dictionaryFacilitator.onFinishInput(context)
         updateSuggestionJob?.cancel()
@@ -447,6 +454,71 @@ class GeneralIME(val helper: IMEHelper) : IMEInterface, WordLearner, SuggestionS
         }
     }
 
+    private fun captureFieldAutofillValue() {
+        val value = fieldAutofillManager.extractCurrentFieldValue(
+            inputLogic.mConnection.getTextBeforeCursor(160, 0),
+            inputLogic.mConnection.getTextAfterCursor(160, 0)
+        )
+        fieldAutofillManager.onFinishInput(
+            value,
+            settings.current.mInputAttributes,
+            settings.current
+        )
+    }
+
+    private fun currentFieldAutofillPrefix(): String {
+        return fieldAutofillManager.extractPrefix(
+            inputLogic.mConnection.getTextBeforeCursor(160, 0)
+        )
+    }
+
+    private fun getFieldAutofillSuggestions(): ArrayList<SuggestedWordInfo> {
+        return fieldAutofillManager.suggestionsFor(
+            helper.getCurrentEditorInfo(),
+            settings.current.mInputAttributes,
+            settings.current,
+            currentFieldAutofillPrefix()
+        )
+    }
+
+    private fun withFieldAutofillSuggestions(
+        suggestedWords: SuggestedWords,
+        inputStyle: Int,
+        sequenceNumber: Int
+    ): SuggestedWords {
+        val autofillSuggestions = getFieldAutofillSuggestions()
+        if (autofillSuggestions.isEmpty()) return suggestedWords
+
+        val existing = HashSet<String>()
+        val merged = ArrayList<SuggestedWordInfo>()
+        autofillSuggestions.forEach {
+            merged.add(it)
+            existing.add(it.mWord.lowercase())
+        }
+
+        suggestedWords.mSuggestedWordInfoList.forEach {
+            if (existing.add(it.mWord.lowercase())) {
+                merged.add(it)
+            }
+        }
+
+        return SuggestedWords(
+            merged,
+            suggestedWords.mRawSuggestions,
+            suggestedWords.mTypedWordInfo,
+            suggestedWords.mTypedWordValid,
+            false,
+            suggestedWords.mIsObsoleteSuggestions,
+            inputStyle,
+            sequenceNumber,
+            suggestedWords.mHighlightedCandidate
+        )
+    }
+
+    fun onAutofillSuggestionAccepted(suggestionInfo: SuggestedWordInfo) {
+        fieldAutofillManager.onSuggestionAccepted(suggestionInfo, settings.current)
+    }
+
     var updateSuggestionJob: Job? = null
     var lmUpdateJob: Job? = null
     private suspend fun updateSuggestionsDictionaryInternal(inputStyle: Int, sequenceNumber: Int) {
@@ -494,23 +566,44 @@ class GeneralIME(val helper: IMEHelper) : IMEInterface, WordLearner, SuggestionS
                     lmResult
                 )
                 if(processed != null) {
-                    onGetSuggestedWords(processed, inputStyle, sequenceNumber)
+                    onGetSuggestedWords(
+                        withFieldAutofillSuggestions(processed, inputStyle, sequenceNumber),
+                        inputStyle,
+                        sequenceNumber
+                    )
                 } else {
                     throwIfDebug(IllegalStateException(
                         "The processAndMergeSuggestions method should not typically return null"
                     ))
 
-                    onGetSuggestedWords(dictResult, inputStyle, sequenceNumber)
+                    onGetSuggestedWords(
+                        withFieldAutofillSuggestions(dictResult, inputStyle, sequenceNumber),
+                        inputStyle,
+                        sequenceNumber
+                    )
                 }
             }
 
             dictResult != null -> {
-                onGetSuggestedWords(dictResult, inputStyle, sequenceNumber)
+                onGetSuggestedWords(
+                    withFieldAutofillSuggestions(dictResult, inputStyle, sequenceNumber),
+                    inputStyle,
+                    sequenceNumber
+                )
             }
 
             // Note: we don't support LM results but not dict
             else -> {
-                setNeutralSuggestionStrip()
+                val autofillOnly = withFieldAutofillSuggestions(
+                    SuggestedWords.getEmptyInstance(),
+                    inputStyle,
+                    sequenceNumber
+                )
+                if (autofillOnly.isEmpty) {
+                    setNeutralSuggestionStrip()
+                } else {
+                    onGetSuggestedWords(autofillOnly, inputStyle, sequenceNumber)
+                }
             }
         }
     }
@@ -525,14 +618,17 @@ class GeneralIME(val helper: IMEHelper) : IMEInterface, WordLearner, SuggestionS
 
         val isSwipe = inputStyle == SuggestedWords.INPUT_STYLE_TAIL_BATCH
                 || inputStyle == SuggestedWords.INPUT_STYLE_UPDATE_BATCH
+        val hasAutofillSuggestions = !isSwipe && getFieldAutofillSuggestions().isNotEmpty()
 
         if(!isSwipe) {
-            if (!settings.current.needsToLookupSuggestions()) {
+            if (!settings.current.needsToLookupSuggestions() && !hasAutofillSuggestions) {
                 setNeutralSuggestionStrip()
                 return
             }
 
-            if (!inputLogic.mWordComposer.isComposingWord && !settings.current.mBigramPredictionEnabled) {
+            if (!inputLogic.mWordComposer.isComposingWord
+                && !settings.current.mBigramPredictionEnabled
+                && !hasAutofillSuggestions) {
                 setNeutralSuggestionStrip()
                 return
             }

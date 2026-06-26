@@ -459,6 +459,34 @@ class SwipeDecoderDictionary(val context: Context, val locale: Locale) : Diction
 
         val topK = if(useHighBeam) 4 else 1
 
+        if(System.currentTimeMillis() < debugLogUntil) {
+            LocalDebugLog.write(
+                context,
+                "futo-keyboard-swipe-before",
+                buildString {
+                    append("locale=").append(locale).append('\n')
+                    append("segmentCount=").append(count).append('\n')
+                    append("leftCount=").append(left.size).append('\n')
+                    append("rightCount=").append(right.size).append('\n')
+                    append("leftSizes=").append(left.joinToString { it.x.size.toString() }).append('\n')
+                    append("rightSizes=").append(right.joinToString { it.x.size.toString() }).append('\n')
+                    append("useHighBeam=").append(useHighBeam).append('\n')
+                    append("beamWidth=").append(beamWidth).append('\n')
+                    append("topK=").append(topK).append('\n')
+                    append("trieWeightsSize=").append(trieWeights.size).append('\n')
+                    append("appliedTriesSize=").append(appliedTries?.size).append('\n')
+                    append("layoutLetters=").append(appliedLayoutInfo.letters).append('\n')
+                    append("layoutDecoder=").append(appliedLayoutInfo.decoder).append('\n')
+                    append("layoutLm=").append(appliedLayoutInfo.lm).append('\n')
+                    append("layoutScale=").append(appliedLayoutInfo.sx).append(',')
+                        .append(appliedLayoutInfo.sy).append('\n')
+                    append("layoutOffset=").append(appliedLayoutInfo.ox).append(',')
+                        .append(appliedLayoutInfo.oy).append('\n')
+                    append("context=").append(wordsContext.joinToString(" ")).append('\n')
+                }
+            )
+        }
+
         val results = synchronized(BinaryDictionary.sTrieUsageLock) {
             if(appliedTries?.isEmpty() != false) {
                 Log.e("SwipeDecoderDictionary", "Applied tries are blank! $appliedTries")
@@ -469,6 +497,20 @@ class SwipeDecoderDictionary(val context: Context, val locale: Locale) : Diction
                  topK = topK,
                  beamWidth = beamWidth,
                  trieWeights = trieWeights
+            )
+        }
+
+        if(System.currentTimeMillis() < debugLogUntil) {
+            LocalDebugLog.write(
+                context,
+                "futo-keyboard-swipe-after",
+                buildString {
+                    append("resultCount=").append(results.size).append('\n')
+                    append("outputs=").append(results.joinToString {
+                        "Word(\"${it.word}\", score=${it.score}, lm=${it.lmScore}, ctc=${it.ctcScore})"
+                    }).append('\n')
+                    append("timing=").append(decoder.lastTiming()).append('\n')
+                }
             )
         }
 

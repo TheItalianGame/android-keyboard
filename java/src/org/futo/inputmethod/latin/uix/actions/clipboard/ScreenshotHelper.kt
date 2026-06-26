@@ -14,12 +14,13 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleCoroutineScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.futo.inputmethod.latin.uix.actions.throwIfDebug
+import org.futo.inputmethod.latin.uix.SettingsKey
 import org.futo.inputmethod.latin.uix.getSetting
 import org.futo.inputmethod.latin.uix.getSettingFlow
 
@@ -30,8 +31,9 @@ interface ScreenshotListener {
 
 class ScreenshotHelper(
     val context: Context,
-    val lifecycleScope: LifecycleCoroutineScope,
-    val listener: ScreenshotListener
+    val lifecycleScope: CoroutineScope,
+    val listener: ScreenshotListener,
+    val enabledSetting: SettingsKey<Boolean> = ClipboardSaveScreenshots
 ) {
     companion object {
         private val TAG = "ScreenshotHelper"
@@ -112,7 +114,7 @@ class ScreenshotHelper(
             PackageManager.PERMISSION_GRANTED
 
     private var settingsObservingJob = lifecycleScope.launch {
-        context.getSettingFlow(ClipboardSaveScreenshots).collect {
+        context.getSettingFlow(enabledSetting).collect {
             if(it && observer == null && hasPermission()) {
                 registerObserver()
             }else if(!it && observer != null) {
@@ -128,7 +130,7 @@ class ScreenshotHelper(
     }
 
     internal suspend fun handleNewScreenshot(dry: Boolean = false) = withContext(Dispatchers.IO) {
-        if(!context.getSetting(ClipboardSaveScreenshots)) return@withContext null
+        if(!context.getSetting(enabledSetting)) return@withContext null
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@withContext null
 
         val projection = arrayOf(
