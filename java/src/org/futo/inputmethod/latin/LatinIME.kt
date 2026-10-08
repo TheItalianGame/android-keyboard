@@ -449,12 +449,8 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
                 }
 
                 if(activeSubtype != null && activeSubtype != currentSubtype) {
-                    currentSubtype = activeSubtype
-
                     withContext(Dispatchers.Main) {
-                        val subtype = Subtypes.convertToSubtype(activeSubtype)
-                        changeInputMethodSubtype(subtype)
-                        uixManager.updateLocale(Subtypes.getLocale(subtype))
+                        changeSubtype(activeSubtype)
                     }
                 }
             }
@@ -463,6 +459,12 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
 
             dataStore.data.collect {
                 onNewSubtype(it[ActiveSubtype.key] ?: ActiveSubtype.default)
+            }
+        }
+
+        launchJob {
+            getSettingFlow(SubtypesSetting).collect {
+                Subtypes.updateLanguageOnSpaceBarVisibility(this@LatinIME)
             }
         }
 
@@ -497,6 +499,15 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
                 invalidateKeyboard(refreshSettings = true)
             }
         }
+    }
+
+    fun changeSubtype(subtypeString: String) {
+        if(currentSubtype == subtypeString) return
+        currentSubtype = subtypeString
+
+        val subtype = Subtypes.convertToSubtype(subtypeString)
+        changeInputMethodSubtype(subtype)
+        uixManager.updateLocale(Subtypes.getLocale(subtype))
     }
 
     private var destroying = false
@@ -829,24 +840,26 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
     }
 
     fun blacklistWord(suggestedWordInfo: SuggestedWordInfo?) = lifecycleScope.launch {
-        if(suggestedWordInfo != null) {
-            val existingWords = getSetting(SUGGESTION_BLACKLIST).toMutableSet()
-            existingWords.add(suggestedWordInfo.mWord)
-            setSetting(SUGGESTION_BLACKLIST, existingWords)
-        }
+        val word = suggestedWordInfo?.mWord
+        if(word != null) {
+            SuggestionBlacklist.addToBlacklistSetting(this@LatinIME, word)
 
-        imeManager.getActiveIME(Settings.getInstance().current).let {
-            if(it is WordLearner && suggestedWordInfo != null) {
-                it.removeFromHistory(
-                    suggestedWordInfo.mWord,
-                    NgramContext.EMPTY_PREV_WORDS_INFO,
-                    -1,
-                    Constants.NOT_A_CODE
-                )
-            }
+            val settings = Settings.getInstance().current
+            imeManager.getActiveIME(settings).let { ime ->
+                if (ime is WordLearner) {
+                    SuggestionBlacklist.getCapitalVariants(word, settings.mLocale).forEach {
+                        ime.removeFromHistory(
+                            it,
+                            NgramContext.EMPTY_PREV_WORDS_INFO,
+                            -1,
+                            Constants.NOT_A_CODE
+                        )
+                    }
+                }
 
-            withContext(Dispatchers.Main) {
-                it.requestSuggestionRefresh()
+                withContext(Dispatchers.Main) {
+                    ime.requestSuggestionRefresh()
+                }
             }
         }
     }
@@ -927,6 +940,13 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
         CanThrowIfDebug = true
 
         // TODO: Spell checker service
+    }
+
+    /// Switch to voice IME or to internal one if it's no longer present.
+    fun trySwitchToShortcutIMEorInternal() {
+        if(!latinIMELegacy.mRichImm.switchToShortcutIme(this)) {
+            uixManager.activateInternalVoiceIME()
+        }
     }
 
     override val foldState: FoldingOptions

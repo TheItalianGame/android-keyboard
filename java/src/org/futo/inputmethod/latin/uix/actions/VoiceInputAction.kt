@@ -82,7 +82,7 @@ fun NoModelInstalled(locale: Locale) {
             enabled = true,
             onClickLabel = null,
             onClick = {
-                context.openURI("https://keyboard.futo.org/voice-input-models", true)
+                context.openURI("https://keyboard.futo.tech/voice-input-models", true)
             },
             role = null,
             indication = null,
@@ -285,13 +285,7 @@ private class VoiceInputActionWindow(
     }
 
     override fun openSettings() {
-        val intent = Intent()
-        intent.setClass(context, SettingsActivity::class.java)
-        intent.setFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        )
-        intent.putExtra("navDest", "languages")
-        context.startActivity(intent)
+        SettingsActivity.openToNavDest(context, "languages")
     }
 }
 
