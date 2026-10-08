@@ -16,8 +16,11 @@
 
 package org.futo.inputmethod.keyboard;
 
+import android.animation.Animator;
 import android.animation.AnimatorInflater;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.res.TypedArray;
@@ -34,11 +37,13 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.LinearInterpolator;
 
 import org.futo.inputmethod.accessibility.AccessibilityUtils;
 import org.futo.inputmethod.accessibility.MainKeyboardAccessibilityDelegate;
 import org.futo.inputmethod.annotations.ExternallyReferenced;
 import org.futo.inputmethod.engine.StateHint;
+import org.futo.inputmethod.keyboard.internal.AbstractDrawingPreview;
 import org.futo.inputmethod.keyboard.internal.DrawingPreviewPlacerView;
 import org.futo.inputmethod.keyboard.internal.DrawingProxy;
 import org.futo.inputmethod.keyboard.internal.GestureFloatingTextDrawingPreview;
@@ -119,6 +124,27 @@ import kotlin.Pair;
 public final class MainKeyboardView extends KeyboardView implements DrawingProxy,
         MoreKeysPanel.Controller {
     private static final String TAG = MainKeyboardView.class.getSimpleName();
+
+    // Inspired by the comma four keyboard: make the touched tile prominent while the
+    // rest of the keyboard recedes. Visual transforms never alter the hit boxes, so
+    // rapid typing and sliding keep their normal touch behavior.
+    private static final float PRESSED_KEY_SCALE = 1.28f;
+    private static final float NEARBY_KEY_MIN_SCALE = 0.84f;
+    private static final float PRESSED_LABEL_SCALE = 1.35f;
+    private static final float NEARBY_LABEL_MIN_SCALE = 0.88f;
+    private static final float KEY_SQUISH_RADIUS = 3.25f;
+    private static final float KEY_PUSH_RATIO = 0.28f;
+    // Lift by roughly one row so the enlarged key remains visible above the thumb.
+    private static final float PRESSED_KEY_LIFT_RATIO = 1.05f;
+    private static final long KEY_SCALE_IN_DURATION_MS = 110;
+    private static final long KEY_SCALE_OUT_DURATION_MS = 90;
+
+    @Nullable
+    private Key mAnimatedKey;
+    @Nullable
+    private ValueAnimator mKeyScaleAnimator;
+    private float mKeyScaleProgress;
+    private final AbstractDrawingPreview mAnimatedKeyDrawingPreview;
 
     /** Listener for {@link KeyboardActionListener}. */
     private KeyboardActionListener mKeyboardActionListener;
@@ -260,6 +286,27 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
 
         mSlidingKeyInputDrawingPreview = new SlidingKeyInputDrawingPreview(mainKeyboardViewAttr, mDrawableProvider);
         mSlidingKeyInputDrawingPreview.setDrawingView(drawingPreviewPlacerView);
+
+        mAnimatedKeyDrawingPreview = new AbstractDrawingPreview() {
+            @Override
+            public void drawPreview(@Nonnull final Canvas canvas) {
+                if (isPreviewEnabled() && mAnimatedKey != null && mKeyScaleProgress > 0.0f) {
+                    drawKeyOnCanvas(mAnimatedKey, canvas);
+                }
+            }
+
+            @Override
+            public void setPreviewPosition(@Nonnull final PointerTracker tracker) {
+                // Position comes directly from the animated key geometry.
+            }
+
+            @Override
+            public void onDeallocateMemory() {
+                // No bitmap resources are retained by this preview.
+            }
+        };
+        mAnimatedKeyDrawingPreview.setDrawingView(drawingPreviewPlacerView);
+        mAnimatedKeyDrawingPreview.setPreviewEnabled(true);
         mainKeyboardViewAttr.recycle();
 
         mDrawingPreviewPlacerView = drawingPreviewPlacerView;
@@ -474,8 +521,9 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     public void onKeyPressed(@Nonnull final Key key, final boolean withPreview) {
         key.onPressed();
         invalidateKey(key);
-        if (withPreview && !key.getNoKeyPreview()) {
-            showKeyPreview(key);
+        if (withPreview && key.getCode() != Constants.CODE_SPACE) {
+            locatePreviewPlacerView();
+            animateKeyScale(key, 1.0f, KEY_SCALE_IN_DURATION_MS);
         }
     }
 
@@ -507,6 +555,9 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     public void onKeyReleased(@Nonnull final Key key, final boolean withAnimation) {
         key.onReleased();
         invalidateKey(key);
+        if (key == mAnimatedKey) {
+            animateKeyScale(key, 0.0f, KEY_SCALE_OUT_DURATION_MS);
+        }
         if (!key.getNoKeyPreview()) {
             if (withAnimation) {
                 dismissKeyPreview(key);
@@ -514,6 +565,34 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
                 dismissKeyPreviewWithoutDelay(key);
             }
         }
+    }
+
+    private void animateKeyScale(@Nonnull final Key key, final float target,
+            final long duration) {
+        if (mKeyScaleAnimator != null) {
+            mKeyScaleAnimator.cancel();
+        }
+        mAnimatedKey = key;
+        final ValueAnimator animator = ValueAnimator.ofFloat(mKeyScaleProgress, target);
+        mKeyScaleAnimator = animator;
+        animator.setDuration(duration);
+        animator.setInterpolator(new LinearInterpolator());
+        animator.addUpdateListener(animation -> {
+            mKeyScaleProgress = (float)animation.getAnimatedValue();
+            invalidateAllKeys();
+            mDrawingPreviewPlacerView.invalidate();
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(final Animator animation) {
+                if (animation == mKeyScaleAnimator && target == 0.0f) {
+                    mAnimatedKey = null;
+                    mKeyScaleAnimator = null;
+                    mDrawingPreviewPlacerView.invalidate();
+                }
+            }
+        });
+        animator.start();
     }
 
     private void dismissKeyPreview(@Nonnull final Key key) {
@@ -803,6 +882,138 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         invalidateKey(mSpaceKey);
     }
 
+    private float getKeyProximity(@Nonnull final Key key) {
+        if (mAnimatedKey == null || key == mAnimatedKey
+                || key.getCode() == Constants.CODE_SPACE) {
+            return 1.0f;
+        }
+        final float dx = key.getDrawX() + key.getDrawWidth() * 0.5f
+                - getAnimatedKeyCenterX();
+        final float dy = key.getY() + key.getHeight() * 0.5f
+                - getAnimatedKeyCenterY();
+        final float distance = (float)Math.hypot(dx, dy);
+        final float radius = Math.max(mAnimatedKey.getDrawWidth(), mAnimatedKey.getHeight())
+                * KEY_SQUISH_RADIUS;
+        final float linear = Math.max(0.0f, 1.0f - distance / radius);
+        // Smoothstep keeps the far edge stationary and avoids a visible movement boundary.
+        return linear * linear * (3.0f - 2.0f * linear);
+    }
+
+    private static float getSmoothPhaseProgress(final float progress,
+            final float start, final float end) {
+        final float linear = Math.max(0.0f, Math.min(1.0f, (progress - start) / (end - start)));
+        return linear * linear * (3.0f - 2.0f * linear);
+    }
+
+    private float getExpansionProgress() {
+        return getSmoothPhaseProgress(mKeyScaleProgress, 0.0f, 0.35f);
+    }
+
+    private float getLiftProgress() {
+        return getSmoothPhaseProgress(mKeyScaleProgress, 0.32f, 1.0f);
+    }
+
+    private float getAnimatedKeyCenterX() {
+        return mAnimatedKey.getDrawX() + mAnimatedKey.getDrawWidth() * 0.5f
+                + getKeyVisualTranslationX(mAnimatedKey);
+    }
+
+    private float getAnimatedKeyCenterY() {
+        return mAnimatedKey.getY() + mAnimatedKey.getHeight() * 0.5f
+                + getKeyVisualTranslationY(mAnimatedKey);
+    }
+
+    @Override
+    protected float getKeyVisualScale(@Nonnull final Key key) {
+        if (key.getCode() == Constants.CODE_SPACE) {
+            return 1.0f;
+        }
+        final float targetScale = key == mAnimatedKey ? PRESSED_KEY_SCALE
+                : 1.0f - (1.0f - NEARBY_KEY_MIN_SCALE) * getKeyProximity(key);
+        final float progress = key == mAnimatedKey
+                ? getExpansionProgress() : getLiftProgress();
+        return 1.0f + (targetScale - 1.0f) * progress;
+    }
+
+    private float getRadialPushX(@Nonnull final Key key) {
+        if (mAnimatedKey == null || key == mAnimatedKey
+                || key.getCode() == Constants.CODE_SPACE) {
+            return 0.0f;
+        }
+        final float dx = key.getDrawX() + key.getDrawWidth() * 0.5f
+                - getAnimatedKeyCenterX();
+        final float dy = key.getY() + key.getHeight() * 0.5f
+                - getAnimatedKeyCenterY();
+        final float distance = Math.max(1.0f, (float)Math.hypot(dx, dy));
+        final float push = mAnimatedKey.getDrawWidth() * KEY_PUSH_RATIO
+                * getKeyProximity(key) * getLiftProgress();
+        return dx / distance * push;
+    }
+
+    private float getRadialPushY(@Nonnull final Key key) {
+        if (mAnimatedKey == null || key == mAnimatedKey) {
+            return -key.getHeight() * PRESSED_KEY_LIFT_RATIO * getLiftProgress();
+        }
+        if (key.getCode() == Constants.CODE_SPACE) {
+            return 0.0f;
+        }
+        final float dx = key.getDrawX() + key.getDrawWidth() * 0.5f
+                - getAnimatedKeyCenterX();
+        final float dy = key.getY() + key.getHeight() * 0.5f
+                - getAnimatedKeyCenterY();
+        final float distance = Math.max(1.0f, (float)Math.hypot(dx, dy));
+        final float push = mAnimatedKey.getDrawWidth() * KEY_PUSH_RATIO
+                * getKeyProximity(key) * getLiftProgress();
+        return dy / distance * push;
+    }
+
+    @Override
+    protected float getKeyVisualTranslationX(@Nonnull final Key key) {
+        final Keyboard keyboard = getKeyboard();
+        final float desired = getRadialPushX(key);
+        if (keyboard == null) {
+            return desired;
+        }
+        final float overhang = (getKeyVisualScale(key) - 1.0f) * key.getDrawWidth() * 0.5f;
+        final float minimum = overhang - key.getDrawX();
+        final float maximum = keyboard.mOccupiedWidth - key.getDrawX()
+                - key.getDrawWidth() - overhang;
+        return Math.max(minimum, Math.min(maximum, desired));
+    }
+
+    @Override
+    protected float getKeyVisualPivotY(@Nonnull final Key key) {
+        // Grow first-row selections downward, leaving room for their upward lift.
+        if (key == mAnimatedKey && key.getY() < key.getHeight() * 0.75f) {
+            return 0.0f;
+        }
+        return super.getKeyVisualPivotY(key);
+    }
+
+    @Override
+    protected float getKeyVisualTranslationY(@Nonnull final Key key) {
+        final Keyboard keyboard = getKeyboard();
+        final float desired = getRadialPushY(key);
+        // The selected tile is drawn in the full-window preview layer, so it can rise
+        // above the keyboard without being clipped by this view's bounds.
+        if (key == mAnimatedKey || keyboard == null) {
+            return desired;
+        }
+        final float growth = getKeyVisualScale(key) - 1.0f;
+        final float pivotY = getKeyVisualPivotY(key);
+        final float upperOverhang = growth * pivotY;
+        final float lowerOverhang = growth * (key.getHeight() - pivotY);
+        final float minimum = upperOverhang - key.getY();
+        final float maximum = keyboard.mOccupiedHeight - key.getY()
+                - key.getHeight() - lowerOverhang;
+        return Math.max(minimum, Math.min(maximum, desired));
+    }
+
+    @Override
+    protected boolean shouldDrawKeyInBaseLayer(@Nonnull final Key key) {
+        return key != mAnimatedKey || mKeyScaleProgress <= 0.0f;
+    }
+
     @Override
     protected void onDrawKeyTopVisuals(final Key key, final Canvas canvas, final Paint paint,
            final KeyDrawParams params, final KeyDrawingConfiguration kdc,
@@ -810,7 +1021,21 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         if (key.getAltCodeWhileTyping() && key.isEnabled()) {
             params.mAnimAlpha = mAltCodeKeyWhileTypingAnimAlpha;
         }
-        super.onDrawKeyTopVisuals(key, canvas, paint, params, kdc, keyWidth, keyHeight);
+        if (key.getCode() == Constants.CODE_SPACE) {
+            super.onDrawKeyTopVisuals(key, canvas, paint, params, kdc, keyWidth, keyHeight);
+        } else {
+            final float targetScale = key == mAnimatedKey
+                    ? PRESSED_LABEL_SCALE
+                    : 1.0f - (1.0f - NEARBY_LABEL_MIN_SCALE) * getKeyProximity(key);
+            final float progress = key == mAnimatedKey
+                    ? getExpansionProgress() : getLiftProgress();
+            final float scale = 1.0f + (targetScale - 1.0f) * progress;
+            final int saveCount = canvas.save();
+            canvas.scale(scale, scale, getKeyVisualPivotX(key), getKeyVisualPivotY(key));
+            super.onDrawKeyTopVisuals(
+                    key, canvas, paint, params, kdc, keyWidth, keyHeight);
+            canvas.restoreToCount(saveCount);
+        }
         final int code = key.getCode();
         if (code == Constants.CODE_SPACE && (key.getIconId().equals("space_key") || mLanguageSwipeProgress != 0.0f)) {
             drawLanguageOnSpacebar(key, canvas, paint, kdc.getHintColor());

@@ -325,12 +325,15 @@ public class KeyboardView extends View {
             for(int i=0; i<layers.size(); i++) {
                 int layer = layers.get(i);
                 for (final Key key : keyboard.getSortedKeys()) {
+                    if (!shouldDrawKeyInBaseLayer(key)) {
+                        continue;
+                    }
                     onDrawKey(key, canvas, paint, layer);
                 }
             }
         } else {
             for (final Key key : mInvalidatedKeys) {
-                if (!keyboard.hasKey(key)) {
+                if (!keyboard.hasKey(key) || !shouldDrawKeyInBaseLayer(key)) {
                     continue;
                 }
                 if (background != null) {
@@ -350,6 +353,31 @@ public class KeyboardView extends View {
 
         mInvalidatedKeys.clear();
         mInvalidateAllKeys = false;
+    }
+
+    /** Optional whole-key transform hooks used by press animations. */
+    protected float getKeyVisualScale(@Nonnull final Key key) {
+        return 1.0f;
+    }
+
+    protected float getKeyVisualTranslationX(@Nonnull final Key key) {
+        return 0.0f;
+    }
+
+    protected float getKeyVisualTranslationY(@Nonnull final Key key) {
+        return 0.0f;
+    }
+
+    protected float getKeyVisualPivotX(@Nonnull final Key key) {
+        return key.getDrawWidth() * 0.5f;
+    }
+
+    protected float getKeyVisualPivotY(@Nonnull final Key key) {
+        return key.getHeight() * 0.5f;
+    }
+
+    protected boolean shouldDrawKeyInBaseLayer(@Nonnull final Key key) {
+        return true;
     }
 
     private Rect getKeyDrawOffsetAndSize(final Key key, final KeyDrawingConfiguration cfg) {
@@ -396,7 +424,10 @@ public class KeyboardView extends View {
 
         final Rect drawOffsetAndSize = getKeyDrawOffsetAndSize(key, kdc);
         canvas.translate(drawOffsetAndSize.left, drawOffsetAndSize.top);
-
+        final int transformSaveCount = canvas.save();
+        canvas.translate(getKeyVisualTranslationX(key), getKeyVisualTranslationY(key));
+        final float keyScale = getKeyVisualScale(key);
+        canvas.scale(keyScale, keyScale, getKeyVisualPivotX(key), getKeyVisualPivotY(key));
 
         final Drawable background = kdc.getBackground();
         if (background != null) {
@@ -407,7 +438,16 @@ public class KeyboardView extends View {
             onDrawKeyTopVisuals(key, canvas, paint, params, kdc, drawOffsetAndSize.right, drawOffsetAndSize.bottom);
         }
 
+        canvas.restoreToCount(transformSaveCount);
         canvas.translate(-drawOffsetAndSize.left, -drawOffsetAndSize.top);
+    }
+
+    /** Draw all visual layers of a key into a canvas using keyboard-local coordinates. */
+    protected final void drawKeyOnCanvas(@Nonnull final Key key, @Nonnull final Canvas canvas) {
+        final List<Integer> layers = mDrawableProvider.getLayers();
+        for (int i = 0; i < layers.size(); i++) {
+            onDrawKey(key, canvas, mPaint, layers.get(i));
+        }
     }
 
     // Draw key background.
