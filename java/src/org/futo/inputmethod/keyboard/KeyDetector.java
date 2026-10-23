@@ -16,8 +16,14 @@
 
 package org.futo.inputmethod.keyboard;
 
+import android.content.Context;
+import android.graphics.Rect;
+
 import org.futo.inputmethod.latin.settings.Settings;
 import org.futo.inputmethod.latin.settings.SettingsValues;
+import org.futo.inputmethod.latin.common.Constants;
+import org.futo.inputmethod.latin.uix.DataStoreHelper;
+import org.futo.inputmethod.latin.uix.settings.pages.PowerTypingSettings;
 
 import java.util.Set;
 
@@ -33,12 +39,15 @@ public class KeyDetector {
     private Keyboard mKeyboard;
     private int mCorrectionX;
     private int mCorrectionY;
+    @Nullable
+    private final Context mContext;
 
     @Nullable
     private Set<Integer> mBoostedCodePoints;
 
     public KeyDetector() {
-        this(0.0f /* keyHysteresisDistance */, 0.0f /* keyHysteresisDistanceForSlidingModifier */);
+        this(null, 0.0f /* keyHysteresisDistance */,
+                0.0f /* keyHysteresisDistanceForSlidingModifier */);
     }
 
     /**
@@ -51,6 +60,12 @@ public class KeyDetector {
      */
     public KeyDetector(final float keyHysteresisDistance,
             final float keyHysteresisDistanceForSlidingModifier) {
+        this(null, keyHysteresisDistance, keyHysteresisDistanceForSlidingModifier);
+    }
+
+    public KeyDetector(@Nullable final Context context, final float keyHysteresisDistance,
+            final float keyHysteresisDistanceForSlidingModifier) {
+        mContext = context == null ? null : context.getApplicationContext();
         mKeyHysteresisDistanceSquared = (int)(keyHysteresisDistance * keyHysteresisDistance);
         mKeyHysteresisDistanceForSlidingModifierSquared = (int)(
                 keyHysteresisDistanceForSlidingModifier * keyHysteresisDistanceForSlidingModifier);
@@ -88,6 +103,106 @@ public class KeyDetector {
         return false;
     }
 
+    private boolean isAdaptiveTouchEnabled() {
+        return mContext != null && DataStoreHelper.getSetting(PowerTypingSettings.AdaptiveTouch);
+    }
+
+    private int getAdaptiveTouchX(final Key key, final int touchX) {
+        if (!isAdaptiveTouchEnabled()) return touchX;
+        final AdaptiveTouchOffset offset = AdaptiveTouchModel.get(mContext, key.getCode());
+        return touchX - Math.round(offset.getX() * key.getWidth());
+    }
+
+    private int getAdaptiveTouchY(final Key key, final int touchY) {
+        if (!isAdaptiveTouchEnabled()) return touchY;
+        final AdaptiveTouchOffset offset = AdaptiveTouchModel.get(mContext, key.getCode());
+        return touchY - Math.round(offset.getY() * key.getHeight());
+    }
+
+    private AdaptiveHitboxExpansion getAdaptiveHitboxExpansion(final Key key) {
+        if (!isAdaptiveTouchEnabled()
+                || !DataStoreHelper.getSetting(PowerTypingSettings.AdaptiveKeyResizing)
+                || !Character.isLetterOrDigit(key.getCode())) {
+            return null;
+        }
+        return AdaptiveTouchModel.getHitboxExpansion(mContext, key.getCode(),
+                DataStoreHelper.getSetting(PowerTypingSettings.AdaptiveKeyGrowth));
+    }
+
+    private boolean isOnAdaptiveKey(final Key key, final int x, final int y,
+            @Nullable final AdaptiveHitboxExpansion expansion) {
+        if (expansion == null) return key.isOnKey(x, y);
+        final Rect hitBox = key.getHitBox();
+        final int extraLeft = Math.round(expansion.getLeft() * key.getWidth());
+        final int extraRight = Math.round(expansion.getRight() * key.getWidth());
+        final int extraTop = Math.round(expansion.getTop() * key.getHeight());
+        final int extraBottom = Math.round(expansion.getBottom() * key.getHeight());
+        return x >= hitBox.left - extraLeft && x < hitBox.right + extraRight
+                && y >= hitBox.top - extraTop && y < hitBox.bottom + extraBottom;
+    }
+
+    private float getAdaptiveDistance(final Key key, final int x, final int y,
+            @Nullable final AdaptiveHitboxExpansion expansion) {
+        final float distance = key.distanceToCenter(x, y);
+        if (expansion == null) return distance;
+        final float centerX = key.getX() + key.getWidth() * 0.5f;
+        final float centerY = key.getY() + key.getHeight() * 0.5f;
+        final float horizontalGrowth = x < centerX ? expansion.getLeft() : expansion.getRight();
+        final float verticalGrowth = y < centerY ? expansion.getTop() : expansion.getBottom();
+        // In an overlap, a confidently expanded edge receives a modest priority advantage.
+        return distance / (1.0f + Math.max(horizontalGrowth, verticalGrowth) * 1.4f);
+    }
+
+    public void recordTouch(@Nullable final Key key, final int x, final int y) {
+        if (key == null || !isAdaptiveTouchEnabled()) {
+            return;
+        }
+        final int code = key.getCode();
+        if (code == Constants.CODE_DELETE) {
+            AdaptiveTouchModel.noteBackspace();
+            return;
+        }
+        if (!Character.isLetterOrDigit(code)) {
+            // Shift and other modifiers may be part of a correction. Text boundaries end it.
+            if (code == Constants.CODE_SPACE || code == Constants.CODE_ENTER || code > 0) {
+                AdaptiveTouchModel.noteWordBoundary(mContext);
+            }
+            return;
+        }
+        final int touchX = getTouchX(x);
+        final int touchY = getTouchY(y);
+        final float normalizedX = (touchX - (key.getX() + key.getWidth() * 0.5f))
+                / Math.max(1.0f, key.getWidth());
+        final float normalizedY = (touchY - (key.getY() + key.getHeight() * 0.5f))
+                / Math.max(1.0f, key.getHeight());
+        AdaptiveCorrectionCandidate correction = null;
+        if (DataStoreHelper.getSetting(PowerTypingSettings.AdaptiveCorrectionLearning)) {
+            correction = AdaptiveTouchModel.prepareLetter(mContext, code);
+        } else {
+            AdaptiveTouchModel.cancelCorrectionLearning();
+        }
+        float correctedX = 0.0f;
+        float correctedY = 0.0f;
+        if (correction != null) {
+            correctedX = (correction.getTouchX() - (key.getX() + key.getWidth() * 0.5f))
+                    / Math.max(1.0f, key.getWidth());
+            correctedY = (correction.getTouchY() - (key.getY() + key.getHeight() * 0.5f))
+                    / Math.max(1.0f, key.getHeight());
+        }
+        AdaptiveTouchModel.record(mContext, code, normalizedX, normalizedY);
+        AdaptiveTouchModel.noteLetterTouch(code, touchX, touchY, correctedX, correctedY,
+                correction != null);
+    }
+
+    public void recordRepeatedBackspaceForCorrection() {
+        if (isAdaptiveTouchEnabled()
+                && DataStoreHelper.getSetting(PowerTypingSettings.AdaptiveCorrectionLearning)) {
+            AdaptiveTouchModel.noteBackspace();
+        } else {
+            AdaptiveTouchModel.cancelCorrectionLearning();
+        }
+    }
+
     /**
      * Detect the key whose hitbox the touch point is in.
      *
@@ -109,10 +224,12 @@ public class KeyDetector {
 
         if(mBoostedCodePoints != null && !mBoostedCodePoints.isEmpty()) {
             for (final Key key : mKeyboard.getNearestKeys(touchX, touchY)) {
+                final int adaptedX = getAdaptiveTouchX(key, touchX);
+                final int adaptedY = getAdaptiveTouchY(key, touchY);
                 if (mBoostedCodePoints.contains(key.getCode())) {
                     // Using min distance to edge for boosted codepoints,
                     // versus min distance to center for non boosted ones.
-                    final float distance = key.distanceToEdge(touchX, touchY);
+                    final float distance = key.distanceToEdge(adaptedX, adaptedY);
 
                     if(distance > Math.min(key.getWidth(), key.getHeight()) * 0.5f)
                         continue;
@@ -125,7 +242,8 @@ public class KeyDetector {
 
                 // If we are on a non-word key (e.g. shift, backspace), disable boosting
                 // (break out of the loop and reset what we found)
-                if(key.isOnKey(touchX, touchY) && !settingsValues.isWordCodePoint(key.getCode())) {
+                if(key.isOnKey(adaptedX, adaptedY)
+                        && !settingsValues.isWordCodePoint(key.getCode())) {
                     minDistance = Integer.MAX_VALUE;
                     primaryKey = null;
                     break;
@@ -134,12 +252,15 @@ public class KeyDetector {
         }
 
         for (final Key key: mKeyboard.getNearestKeys(touchX, touchY)) {
+            final int adaptedX = getAdaptiveTouchX(key, touchX);
+            final int adaptedY = getAdaptiveTouchY(key, touchY);
+            final AdaptiveHitboxExpansion expansion = getAdaptiveHitboxExpansion(key);
             // An edge key always has its enlarged hitbox to respond to an event that occurred in
             // the empty area around the key. (@see Key#markAsLeftEdge(KeyboardParams)} etc.)
-            if (!key.isOnKey(touchX, touchY)) {
+            if (!isOnAdaptiveKey(key, adaptedX, adaptedY, expansion)) {
                 continue;
             }
-            final float distance = key.distanceToCenter(touchX, touchY);
+            final float distance = getAdaptiveDistance(key, adaptedX, adaptedY, expansion);
             if (distance > minDistance) {
                 continue;
             }

@@ -28,6 +28,8 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okio.ByteString.Companion.encodeUtf8
 import okio.ByteString.Companion.toByteString
 import okio.buffer
@@ -46,6 +48,7 @@ import org.futo.inputmethod.latin.uix.actions.clipboard.clipboardDir
 import org.futo.inputmethod.latin.uix.actions.clipboard.clipboardFile
 import org.futo.inputmethod.latin.uix.settings.ScreenTitle
 import org.futo.inputmethod.latin.uix.settings.ScrollableList
+import org.futo.inputmethod.latin.uix.settings.pages.PowerTypingSettings
 import org.futo.inputmethod.latin.uix.theme.ZipThemes
 import org.futo.inputmethod.latin.xlm.ModelPaths
 import org.json.JSONArray
@@ -77,6 +80,49 @@ data class PersonalWord(
 
 @Suppress("HardCodedStringLiteral")
 object SettingsExporter {
+    private const val AUTO_BACKUP_INTERVAL_MS = 24L * 60L * 60L * 1000L
+    private const val AUTO_BACKUP_LIMIT = 5
+
+    suspend fun createAutomaticBackup(context: Context, force: Boolean = false): File? =
+        withContext(Dispatchers.IO) {
+        if (!force && !context.getSetting(PowerTypingSettings.AutomaticBackup)) {
+            return@withContext null
+        }
+
+        val metadata = context.getSharedPreferences(
+            "automatic_settings_backup", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (!force && now - metadata.getLong("last_backup", 0L) < AUTO_BACKUP_INTERVAL_MS) {
+            return@withContext null
+        }
+
+        try {
+            val directory = context.getExternalFilesDir("backups")
+                ?: File(context.filesDir, "automatic-settings-backups")
+            directory.mkdirs()
+            val target = File(directory, "FUTOKeyboard_Auto_${now}.backup")
+            val temporary = File(directory, "${target.name}.tmp")
+            temporary.outputStream().use { exportSettings(context, it, false) }
+            if (!temporary.renameTo(target)) {
+                temporary.copyTo(target, overwrite = true)
+                temporary.delete()
+            }
+
+            directory.listFiles { file ->
+                file.isFile && file.name.startsWith("FUTOKeyboard_Auto_")
+                        && file.extension == "backup"
+            }?.sortedByDescending { it.lastModified() }
+                ?.drop(AUTO_BACKUP_LIMIT)
+                ?.forEach { it.delete() }
+
+            metadata.edit().putLong("last_backup", now).apply()
+            target
+        } catch (exception: Exception) {
+            Log.e("SettingsExporter", "Automatic backup failed", exception)
+            null
+        }
+    }
+
     @Suppress("HardCodedStringLiteral")
     @Throws(Exception::class)
     private fun writeSharedPrefs(

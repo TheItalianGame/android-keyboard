@@ -1,0 +1,15 @@
+diff --git a/core/values/strings-uix.xml b/core/values/strings-uix.xml
+index aa146b7..53ede70 100644
+--- a/core/values/strings-uix.xml
++++ b/core/values/strings-uix.xml
+@@ -565,3 +565,3 @@
+-    <string name="voice_input_settings_builtin_disabled_notice">Built-in voice input is disabled!</string>
+-    <string name="voice_input_settings_disable_builtin_voice_input">Disable built-in voice input</string>
+-    <string name="voice_input_settings_disable_builtin_voice_input_subtitle">Use voice input provided by external app</string>
++    <string name="voice_input_settings_builtin_disabled_notice">Using system voice input</string>
++    <string name="voice_input_settings_disable_builtin_voice_input">Use system voice input</string>
++    <string name="voice_input_settings_disable_builtin_voice_input_subtitle">Use Android or Google voice typing instead of FUTO local voice input</string>
+@@ -699 +699 @@ Default is %1$s</string>
+-</resources>
+\ No newline at end of file
++</resources>

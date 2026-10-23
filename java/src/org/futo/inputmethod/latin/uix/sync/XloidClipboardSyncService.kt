@@ -16,11 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
 import org.futo.inputmethod.latin.R
-import org.futo.inputmethod.latin.uix.getSettingBlocking
-import org.futo.inputmethod.latin.uix.getSettingFlow
+import org.futo.inputmethod.latin.uix.setSettingBlocking
 import org.futo.inputmethod.latin.uix.settings.SettingsActivity
 
 class XloidClipboardSyncService : Service() {
@@ -42,21 +39,11 @@ class XloidClipboardSyncService : Service() {
 
         val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         scope = serviceScope
+        applicationContext.setSettingBlocking(XloidClipboardSyncEnabled.key, true)
         XloidClipboardSync.start(this, serviceScope)
-
-        serviceScope.launch {
-            applicationContext.getSettingFlow(XloidClipboardSyncEnabled).collectLatest { enabled ->
-                if (!enabled) stopSelf()
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!applicationContext.getSettingBlocking(XloidClipboardSyncEnabled)) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
         return START_STICKY
     }
 
@@ -128,11 +115,9 @@ class XloidClipboardSyncService : Service() {
 
         @JvmStatic
         fun startIfEnabled(context: Context) {
-            if (context.applicationContext.getSettingBlocking(XloidClipboardSyncEnabled)) {
-                start(context)
-            } else {
-                stop(context)
-            }
+            // Clipboard sync is a permanent foreground feature in this fork. Keeping
+            // this entry point preserves callers while ensuring boot/update restarts it.
+            start(context)
         }
     }
 }

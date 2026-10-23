@@ -68,6 +68,8 @@ import org.futo.inputmethod.keyboard.Keyboard;
 import org.futo.inputmethod.keyboard.KeyboardActionListener;
 import org.futo.inputmethod.keyboard.KeyboardSwitcher;
 import org.futo.inputmethod.keyboard.MainKeyboardView;
+import org.futo.inputmethod.latin.uix.DataStoreHelper;
+import org.futo.inputmethod.latin.uix.settings.pages.PowerTypingSettings;
 import org.futo.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
 import org.futo.inputmethod.latin.common.Constants;
 import org.futo.inputmethod.latin.common.CoordinateUtils;
@@ -626,10 +628,17 @@ public class LatinIMELegacy implements KeyboardActionListener,
     }
 
     @Override
-    public void onMovePointer(int steps) {
+    public void onMovePointer(int steps, boolean stepOverWords, boolean select) {
         mImeManager.getActiveIME(
                 mSettings.getCurrent()
-        ).onMovePointer(steps, false, null);
+        ).onMovePointer(steps, stepOverWords, select);
+        if (DataStoreHelper.getSetting(PowerTypingSettings.CursorHaptics)) {
+            final MainKeyboardView keyboardView = mKeyboardSwitcher.getMainKeyboardView();
+            if (keyboardView != null) {
+                AudioAndHapticFeedbackManager.getInstance()
+                        .performHapticFeedback(keyboardView, true);
+            }
+        }
     }
 
     @Override

@@ -46,6 +46,8 @@ import org.futo.inputmethod.latin.suggestions.SuggestionStripViewAccessor
 import org.futo.inputmethod.latin.uix.SettingsKey
 import org.futo.inputmethod.latin.uix.actions.throwIfDebug
 import org.futo.inputmethod.latin.uix.getSetting
+import org.futo.inputmethod.latin.uix.settings.pages.PowerTypingSettings
+import org.futo.inputmethod.latin.xlm.BatchInputConverter
 import org.futo.inputmethod.latin.uix.isDirectBootUnlocked
 import org.futo.inputmethod.latin.utils.AsyncResultHolder
 import org.futo.inputmethod.latin.xlm.LanguageModelFacilitator
@@ -718,6 +720,27 @@ class GeneralIME(val helper: IMEHelper) : IMEInterface, WordLearner, SuggestionS
     }
 
     override fun onEndBatchInput(batchPointers: InputPointers?) {
+        if (batchPointers != null && context.getSetting(PowerTypingSettings.NumericSwipe)) {
+            val detector = helper.keyboardSwitcher.mainKeyboardView?.mKeyDetector
+            if (detector != null && batchPointers.pointerSize > 1) {
+                val raw = BatchInputConverter.convertToString(
+                    batchPointers.xCoordinates,
+                    batchPointers.yCoordinates,
+                    batchPointers.pointerSize,
+                    detector,
+                    mutableListOf(),
+                    mutableListOf(),
+                )
+                if (raw.length in 1..32
+                    && raw.any(Char::isDigit)
+                    && raw.all { it.isLetterOrDigit() || it == '\'' || it == '-' || it == '_' }
+                ) {
+                    inputLogic.onCancelBatchInput()
+                    onEvent(Event.createSoftwareTextEvent(raw, Constants.CODE_OUTPUT_TEXT))
+                    return
+                }
+            }
+        }
         inputLogic.onEndBatchInput(batchPointers)
     }
 

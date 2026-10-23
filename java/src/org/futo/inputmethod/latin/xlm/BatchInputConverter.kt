@@ -60,8 +60,6 @@ object BatchInputConverter {
             }
         }
 
-        println("Transformed string: [$s]")
-
         return s.lowercase()
     }
 }

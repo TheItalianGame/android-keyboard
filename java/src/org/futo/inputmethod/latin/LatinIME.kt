@@ -73,6 +73,7 @@ import org.futo.inputmethod.latin.uix.KeyHintsSetting
 import org.futo.inputmethod.latin.uix.KeyboardColorScheme
 import org.futo.inputmethod.latin.uix.SUGGESTION_BLACKLIST
 import org.futo.inputmethod.latin.uix.SettingsKey
+import org.futo.inputmethod.latin.uix.SettingsExporter
 import org.futo.inputmethod.latin.uix.THEME_KEY
 import org.futo.inputmethod.latin.uix.UixManager
 import org.futo.inputmethod.latin.uix.actions.CanThrowIfDebug
@@ -393,6 +394,10 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
         LayoutManager.init(this)
 
         DataStoreHelper.init(this)
+
+        launchJob {
+            SettingsExporter.createAutomaticBackup(this@LatinIME)
+        }
 
         val filter = IntentFilter(Intent.ACTION_USER_UNLOCKED)
         registerReceiver(unlockReceiver, filter)

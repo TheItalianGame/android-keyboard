@@ -29,6 +29,7 @@ import org.futo.inputmethod.latin.uix.actions.clipboard.ClipboardProviderState
 import org.futo.inputmethod.latin.uix.actions.clipboard.ScreenshotHelper
 import org.futo.inputmethod.latin.uix.actions.clipboard.ScreenshotListener
 import org.futo.inputmethod.latin.uix.getSettingFlow
+import org.futo.inputmethod.latin.uix.setSetting
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
@@ -67,7 +68,7 @@ val XloidClipboardSyncRelayToken = SettingsKey(
 
 val XloidClipboardSyncScreenshots = SettingsKey(
     booleanPreferencesKey("xloid_clipboard_sync_screenshots"),
-    false
+    true
 )
 
 private data class SyncConfig(
@@ -94,6 +95,7 @@ object XloidClipboardSync {
     private const val ClipTtlMs = 60L * 1000L
     private const val RecentDigestTtlMs = 2L * 60L * 1000L
     private const val SyncedClipExtra = "org.futo.inputmethod.latin.xloidflare.SYNCED_CLIP"
+    private const val ScreenshotClipExtra = "org.futo.inputmethod.latin.xloidflare.SCREENSHOT_CLIP"
     private const val SourceClipboard = "clipboard"
     private const val SourceScreenshot = "screenshot"
     private val ImageMimeTypes = setOf("image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp")
@@ -133,8 +135,16 @@ object XloidClipboardSync {
 
     private val screenshotListener = object : ScreenshotListener {
         override fun onScreenshotAdded(mime: String, uri: Uri) {
-            val activeConfig = config ?: return
-            if (!activeConfig.isUsable) return
+            // Keep the most recent screenshot on Android's system clipboard even when
+            // the relay is temporarily disconnected. Mark it so the clipboard listener
+            // does not send a duplicate alongside the screenshot-specific packet below.
+            sendScope?.launch(Dispatchers.Main) {
+                try {
+                    clipboardManager.setPrimaryClip(screenshotClip(mime, uri))
+                } catch (e: Exception) {
+                    Log.w(Tag, "Failed copying screenshot to clipboard", e)
+                }
+            }
 
             sendScope?.launch(Dispatchers.IO) {
                 val payload = try {
@@ -147,7 +157,10 @@ object XloidClipboardSync {
                 if (shouldIgnoreDigest(payload.digest)) return@launch
 
                 rememberDigest(payload.digest)
-                sendPayload(activeConfig, payload)
+                val activeConfig = config
+                if (activeConfig?.isUsable == true) {
+                    sendPayload(activeConfig, payload)
+                }
             }
         }
 
@@ -168,6 +181,12 @@ object XloidClipboardSync {
             listener = screenshotListener,
             enabledSetting = XloidClipboardSyncScreenshots
         )
+
+        // Screenshot-to-clipboard is an always-on part of sync. Persisting true also
+        // migrates installs that previously saved the old opt-in setting as false.
+        scope.launch(Dispatchers.IO) {
+            appContext.setSetting(XloidClipboardSyncScreenshots, true)
+        }
 
         scope.launch(Dispatchers.Main) {
             if (!listenerRegistered) {
@@ -278,6 +297,7 @@ object XloidClipboardSync {
         }
         if (isSensitive) return null
         if (isSyncedClip(description)) return null
+        if (isScreenshotClip(description)) return null
 
         val item = clip.getItemAt(0) ?: return null
         val mimeTypes = description.mimeTypes()
@@ -317,6 +337,23 @@ object XloidClipboardSync {
         } else {
             false
         }
+    }
+
+    private fun isScreenshotClip(description: ClipDescription): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            description.extras?.getBoolean(ScreenshotClipExtra, false) == true
+        } else {
+            description.label?.toString() == "Xloidflare screenshot"
+        }
+
+    private fun screenshotClip(mime: String, uri: Uri): ClipData {
+        val description = ClipDescription("Xloidflare screenshot", arrayOf(normalizeMime(mime)))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            description.extras = PersistableBundle().apply {
+                putBoolean(ScreenshotClipExtra, true)
+            }
+        }
+        return ClipData(description, ClipData.Item(uri))
     }
 
     private fun ClipDescription.mimeTypes(): List<String> =

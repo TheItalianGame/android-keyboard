@@ -728,4 +728,41 @@ Default is %1$s</string>
     <string name="personal_dictionary_delete_additional_file">Delete extra dictionary file?</string>
     <!-- %1$s will be replaced with the custom dictionary name -->
     <string name="personal_dictionary_delete_additional_file_text">%1$s will be deleted</string>
+
+    <!-- Power typing -->
+    <string name="power_typing_title">Power typing</string>
+    <string name="power_typing_subtitle">Advanced editing, gestures, backups, and touch learning</string>
+    <string name="power_typing_animation_speed">Key animation speed</string>
+    <string name="power_typing_animation_speed_subtitle">Controls how quickly pressed keys rise, expand, and settle</string>
+    <string name="power_typing_selection_wrap">Wrap selected text</string>
+    <string name="power_typing_selection_wrap_subtitle">Typing an opening bracket or quote wraps the current selection</string>
+    <string name="power_typing_smart_backspace">Smart backspace</string>
+    <string name="power_typing_smart_backspace_subtitle">Accelerate held deletion and pause briefly at punctuation</string>
+    <string name="power_typing_enhanced_cursor">Enhanced spacebar cursor</string>
+    <string name="power_typing_enhanced_cursor_subtitle">Slide up to jump by words or down to select text</string>
+    <string name="power_typing_cursor_haptics">Cursor haptic ticks</string>
+    <string name="power_typing_cursor_haptics_subtitle">Vibrate gently as the cursor crosses characters or words</string>
+    <string name="power_typing_numeric_swipe">Numbers in swipe typing</string>
+    <string name="power_typing_numeric_swipe_subtitle">Allow gestures such as 1st, 2FA, and F1 when a number row is visible</string>
+    <string name="power_typing_adaptive_touch">Adaptive touch correction</string>
+    <string name="power_typing_adaptive_touch_subtitle">Learn your local per-key touch bias without uploading typing data</string>
+    <string name="power_typing_adaptive_correction_learning">Learn from corrected letters</string>
+    <string name="power_typing_adaptive_correction_learning_subtitle">Learn one-letter substitutions after you backspace and safely retype part of a word</string>
+    <string name="power_typing_adaptive_key_resizing">Adaptive invisible key sizing</string>
+    <string name="power_typing_adaptive_key_resizing_subtitle">Give repeatedly mistapped keys more touch area toward the troublesome edge</string>
+    <string name="power_typing_adaptive_key_growth">Maximum invisible key growth</string>
+    <string name="power_typing_adaptive_key_growth_subtitle">Caps how far a learned touch area may expand without changing its appearance</string>
+    <string name="power_typing_adaptive_map">Adaptive touch map</string>
+    <string name="power_typing_adaptive_map_samples">%1$d local taps • %2$d confirmed corrections</string>
+    <string name="power_typing_adaptive_map_growth_legend">Shared colored boundaries show area transferred between neighboring keys</string>
+    <string name="power_typing_adaptive_map_reset">Reset touch calibration</string>
+    <string name="power_typing_automatic_backup">Automatic local backups</string>
+    <string name="power_typing_automatic_backup_subtitle">Keep five rotating settings backups on this device</string>
+    <string name="power_typing_backup_now">Back up now</string>
+    <string name="power_typing_backup_created">Backup created</string>
+    <string name="power_typing_backup_failed">Backup failed</string>
+    <string name="action_forward_delete_title">Forward delete</string>
+    <string name="action_add_word_title">Add current word</string>
+    <string name="action_add_word_empty">No selected or nearby word</string>
+    <string name="action_add_word_added">Word added to personal dictionary</string>
 </resources>

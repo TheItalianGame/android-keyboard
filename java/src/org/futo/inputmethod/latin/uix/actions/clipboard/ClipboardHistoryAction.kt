@@ -179,7 +179,7 @@ val ClipboardSaveImages = SettingsKey(
 
 val ClipboardSaveScreenshots = SettingsKey(
     booleanPreferencesKey("clipboard_save_screenshots"),
-    false
+    true
 )
 
 val ClipboardLastBackup = SettingsKey(

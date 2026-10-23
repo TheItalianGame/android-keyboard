@@ -54,6 +54,8 @@ import org.futo.inputmethod.latin.settings.SettingsValuesForSuggestion;
 import org.futo.inputmethod.latin.settings.SpacingAndPunctuations;
 import org.futo.inputmethod.latin.suggestions.SuggestionStripViewAccessor;
 import org.futo.inputmethod.latin.uix.actions.BugViewerKt;
+import org.futo.inputmethod.latin.uix.DataStoreHelper;
+import org.futo.inputmethod.latin.uix.settings.pages.PowerTypingSettings;
 import org.futo.inputmethod.latin.utils.InputTypeUtils;
 import org.futo.inputmethod.latin.utils.RecapitalizeStatus;
 import org.futo.inputmethod.latin.utils.StatsUtils;
@@ -117,6 +119,7 @@ public final class InputLogic {
     private final RecapitalizeStatus mRecapitalizeStatus = new RecapitalizeStatus();
 
     private int mDeleteCount;
+    private int mSmartDeletePauseCodePoint = Constants.NOT_A_CODE;
     private long mLastKeyTime;
     public final TreeSet<Long> mCurrentlyPressedHardwareKeys = new TreeSet<>();
 
@@ -247,6 +250,7 @@ public final class InputLogic {
         mWordComposer.restartCombining(combiningSpec);
         resetComposingState(true /* alsoResetLastComposedWord */);
         mDeleteCount = 0;
+        mSmartDeletePauseCodePoint = Constants.NOT_A_CODE;
         mSpaceState = SpaceState.NONE;
         mRecapitalizeStatus.disable(); // Do not perform recapitalize until the cursor is moved once
         mCurrentlyPressedHardwareKeys.clear();
@@ -704,6 +708,7 @@ public final class InputLogic {
         if (processedEvent.mKeyCode != Constants.CODE_DELETE
                 || inputTransaction.mTimestamp > mLastKeyTime + Constants.LONG_PRESS_MILLISECONDS) {
             mDeleteCount = 0;
+            mSmartDeletePauseCodePoint = Constants.NOT_A_CODE;
         }
 
         mLastKeyTime = inputTransaction.mTimestamp;
@@ -1100,6 +1105,10 @@ public final class InputLogic {
         final int codePoint = event.mCodePoint;
         mSpaceState = SpaceState.NONE;
 
+        if (tryWrapSelectedText(codePoint, inputTransaction)) {
+            return;
+        }
+
         if(codePoint == Constants.CODE_SPACE
                 && inputTransaction.mSpaceState == SpaceState.ANTIPHANTOM) {
             startDoubleSpacePeriodCountdown(inputTransaction);
@@ -1130,6 +1139,49 @@ public final class InputLogic {
             }
             handleNonSeparatorEvent(event, inputTransaction.mSettingsValues, inputTransaction);
         }
+    }
+
+    private boolean tryWrapSelectedText(final int codePoint,
+            final InputTransaction inputTransaction) {
+        if (!DataStoreHelper.getSetting(PowerTypingSettings.SelectionWrapping)) {
+            return false;
+        }
+
+        final String closing;
+        switch (codePoint) {
+            case '(':
+                closing = ")";
+                break;
+            case '[':
+                closing = "]";
+                break;
+            case '{':
+                closing = "}";
+                break;
+            case '"':
+                closing = "\"";
+                break;
+            case '\'':
+                closing = "'";
+                break;
+            default:
+                return false;
+        }
+
+        final CharSequence selected = mConnection.getSelectedText(0);
+        if (TextUtils.isEmpty(selected)) {
+            return false;
+        }
+
+        final String opening = StringUtils.newSingleCodePointString(codePoint);
+        mConnection.beginBatchEdit();
+        resetComposingState(true);
+        mConnection.finishComposingText();
+        mConnection.commitText(opening + selected + closing, 1);
+        mConnection.endBatchEdit();
+        inputTransaction.setDidAffectContents();
+        inputTransaction.setRequiresUpdateSuggestions();
+        return true;
     }
 
     /**
@@ -1455,6 +1507,28 @@ public final class InputLogic {
         mSpaceState = SpaceState.NONE;
         mDeleteCount++;
 
+        if (event.isKeyRepeat()
+                && DataStoreHelper.getSetting(PowerTypingSettings.SmartBackspace)
+                && !mConnection.hasSelection()
+                && !mWordComposer.isComposingWord()) {
+            final int codePoint = mConnection.getCodePointBeforeCursor();
+            final int type = codePoint == Constants.NOT_A_CODE
+                    ? Character.UNASSIGNED : Character.getType(codePoint);
+            final boolean punctuation = type == Character.CONNECTOR_PUNCTUATION
+                    || type == Character.DASH_PUNCTUATION
+                    || type == Character.START_PUNCTUATION
+                    || type == Character.END_PUNCTUATION
+                    || type == Character.INITIAL_QUOTE_PUNCTUATION
+                    || type == Character.FINAL_QUOTE_PUNCTUATION
+                    || type == Character.OTHER_PUNCTUATION;
+            if (punctuation && mSmartDeletePauseCodePoint != codePoint) {
+                // One repeat interval of resistance makes word boundaries easier to feel.
+                mSmartDeletePauseCodePoint = codePoint;
+                return;
+            }
+            mSmartDeletePauseCodePoint = Constants.NOT_A_CODE;
+        }
+
         // In many cases after backspace, we need to update the shift state. Normally we need
         // to do this right away to avoid the shift state being out of date in case the user types
         // backspace then some other character very fast. However, in the case of backspace key
@@ -1609,7 +1683,8 @@ public final class InputLogic {
                     // best thing is to leave it to whatever it thinks is best.
                     sendDownUpKeyEvent(KeyEvent.KEYCODE_DEL, 0);
                     int totalDeletedLength = 1;
-                    if (mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
+                    if (mDeleteCount > Constants.DELETE_ACCELERATE_AT
+                            && DataStoreHelper.getSetting(PowerTypingSettings.SmartBackspace)) {
                         // If this is an accelerated (i.e., double) deletion, then we need to
                         // consider unlearning here because we may have already reached
                         // the previous word, and will lose it after next deletion.
@@ -1668,7 +1743,8 @@ public final class InputLogic {
 
                     mConnection.deleteTextBeforeCursor(lengthToDelete);
                     int totalDeletedLength = lengthToDelete;
-                    if (mDeleteCount > Constants.DELETE_ACCELERATE_AT) {
+                    if (mDeleteCount > Constants.DELETE_ACCELERATE_AT
+                            && DataStoreHelper.getSetting(PowerTypingSettings.SmartBackspace)) {
                         // If this is an accelerated (i.e., double) deletion, then we need to
                         // consider unlearning here because we may have already reached
                         // the previous word, and will lose it after next deletion.

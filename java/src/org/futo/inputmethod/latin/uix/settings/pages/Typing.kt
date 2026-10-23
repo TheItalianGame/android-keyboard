@@ -906,6 +906,7 @@ val TypingSettingsMenu = UserSettingsMenu(
     title = R.string.typing_settings_title,
     navPath = "typing", registerNavPath = true,
     settings = listOf(
+        PowerTypingNavigationItem,
         UserSetting(
             name = R.string.typing_settings_auto_space_mode,
             component = {
@@ -951,23 +952,18 @@ val TypingSettingsMenu = UserSettingsMenu(
                 val context = LocalContext.current
                 val setting = useDataStore(XloidClipboardSyncEnabled)
 
-                LaunchedEffect(setting.value) {
-                    if (setting.value) {
-                        XloidClipboardSyncService.start(context)
-                    }
+                LaunchedEffect(Unit) {
+                    setting.setValue(true)
+                    XloidClipboardSyncService.start(context)
                 }
 
                 SettingToggleRaw(
                     title = stringResource(R.string.clipboard_sync_settings_enable),
                     subtitle = stringResource(R.string.clipboard_sync_settings_enable_subtitle),
-                    enabled = setting.value,
-                    setValue = { enabled ->
-                        setting.setValue(enabled)
-                        if (enabled) {
-                            XloidClipboardSyncService.start(context)
-                        } else {
-                            XloidClipboardSyncService.stop(context)
-                        }
+                    enabled = true,
+                    setValue = {
+                        setting.setValue(true)
+                        XloidClipboardSyncService.start(context)
                     }
                 )
             }
@@ -979,26 +975,32 @@ val TypingSettingsMenu = UserSettingsMenu(
                 val context = LocalContext.current
                 val setting = useDataStore(XloidClipboardSyncScreenshots)
                 val permission = ScreenshotHelper.permission
+                val permissionGranted = remember {
+                    mutableStateOf(
+                        ContextCompat.checkSelfPermission(context, permission) ==
+                            PackageManager.PERMISSION_GRANTED
+                    )
+                }
                 val launcher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
                 ) { isGranted ->
-                    setting.setValue(isGranted)
+                    permissionGranted.value = isGranted
+                    // Screenshot sync is always enabled; permission controls whether
+                    // Android lets the watcher see new screenshots.
+                    setting.setValue(true)
+                }
+
+                LaunchedEffect(Unit) {
+                    setting.setValue(true)
+                    if (!permissionGranted.value) launcher.launch(permission)
                 }
 
                 SettingToggleRaw(
                     title = stringResource(R.string.clipboard_sync_settings_screenshots),
-                    subtitle = if (setting.value) null else stringResource(R.string.clipboard_sync_settings_screenshots_subtitle),
-                    enabled = setting.value,
-                    setValue = { enabled ->
-                        if (!enabled) {
-                            setting.setValue(false)
-                        } else if (ContextCompat.checkSelfPermission(
-                                context,
-                                permission
-                            ) == PackageManager.PERMISSION_GRANTED
-                        ) {
-                            setting.setValue(true)
-                        } else {
+                    subtitle = if (permissionGranted.value) null else stringResource(R.string.clipboard_sync_settings_screenshots_subtitle),
+                    enabled = true,
+                    setValue = {
+                        if (!permissionGranted.value) {
                             launcher.launch(permission)
                         }
                     }

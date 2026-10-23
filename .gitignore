@@ -23,6 +23,7 @@ logs/
 # Local Cloudflare/dev artifacts and secrets
 cloudflare/xloidflare/node_modules/
 cloudflare/xloidflare/.relay-token*
+cloudflare/xloidflare/CREDENTIALS_USED_PRIVATE.md
 cloudflare/xloidflare/metadata*.json
 cloudflare/xloidflare/.wrangler/
 

@@ -59,11 +59,13 @@ import org.futo.inputmethod.keyboard.internal.TimerHandler;
 import org.futo.inputmethod.latin.AudioAndHapticFeedbackManager;
 import org.futo.inputmethod.latin.Subtypes;
 import org.futo.inputmethod.latin.uix.DynamicThemeProvider;
+import org.futo.inputmethod.latin.uix.DataStoreHelper;
 import org.futo.inputmethod.latin.R;
 import org.futo.inputmethod.latin.SuggestedWords;
 import org.futo.inputmethod.latin.common.Constants;
 import org.futo.inputmethod.latin.common.CoordinateUtils;
 import org.futo.inputmethod.latin.uix.theme.KeyDrawingConfiguration;
+import org.futo.inputmethod.latin.uix.settings.pages.PowerTypingSettings;
 import org.futo.inputmethod.latin.utils.LanguageOnSpacebarUtils;
 import org.futo.inputmethod.latin.utils.SubtypeLocaleUtils;
 import org.futo.inputmethod.latin.utils.TypefaceUtils;
@@ -134,6 +136,8 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     private static final float NEARBY_LABEL_MIN_SCALE = 0.88f;
     private static final float KEY_SQUISH_RADIUS = 3.25f;
     private static final float KEY_PUSH_RATIO = 0.28f;
+    private static final float SAME_ROW_SPREAD_RATIO = 0.20f;
+    private static final float LOWER_ROW_RECESS_RATIO = 0.16f;
     // Lift by roughly one row so the enlarged key remains visible above the thumb.
     private static final float PRESSED_KEY_LIFT_RATIO = 1.05f;
     private static final long KEY_SCALE_IN_DURATION_MS = 110;
@@ -229,7 +233,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
                 R.styleable.MainKeyboardView_keyHysteresisDistance, 0.0f);
         final float keyHysteresisDistanceForSlidingModifier = mainKeyboardViewAttr.getDimension(
                 R.styleable.MainKeyboardView_keyHysteresisDistanceForSlidingModifier, 0.0f);
-        mKeyDetector = new KeyDetector(
+        mKeyDetector = new KeyDetector(context,
                 keyHysteresisDistance, keyHysteresisDistanceForSlidingModifier);
 
         PointerTracker.init(mainKeyboardViewAttr, mTimerHandler, this /* DrawingProxy */);
@@ -291,6 +295,16 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
             @Override
             public void drawPreview(@Nonnull final Canvas canvas) {
                 if (isPreviewEnabled() && mAnimatedKey != null && mKeyScaleProgress > 0.0f) {
+                    final Keyboard keyboard = getKeyboard();
+                    if (keyboard != null) {
+                        // Draw displaced neighbors first so the selected key always floats above
+                        // them. The full-window preview layer lets edge rows move without clipping.
+                        for (final Key key : keyboard.getSortedKeys()) {
+                            if (key != mAnimatedKey && shouldDrawInAnimationOverlay(key)) {
+                                drawKeyOnCanvas(key, canvas);
+                            }
+                        }
+                    }
                     drawKeyOnCanvas(mAnimatedKey, canvas);
                 }
             }
@@ -575,7 +589,9 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         mAnimatedKey = key;
         final ValueAnimator animator = ValueAnimator.ofFloat(mKeyScaleProgress, target);
         mKeyScaleAnimator = animator;
-        animator.setDuration(duration);
+        final int speedPercent = Math.max(25,
+                DataStoreHelper.getSetting(PowerTypingSettings.AnimationSpeed));
+        animator.setDuration(Math.max(30L, Math.round(duration * 100.0f / speedPercent)));
         animator.setInterpolator(new LinearInterpolator());
         animator.addUpdateListener(animation -> {
             mKeyScaleProgress = (float)animation.getAnimatedValue();
@@ -940,14 +956,25 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
                 || key.getCode() == Constants.CODE_SPACE) {
             return 0.0f;
         }
-        final float dx = key.getDrawX() + key.getDrawWidth() * 0.5f
+        final float keyCenterX = key.getDrawX() + key.getDrawWidth() * 0.5f;
+        final float keyCenterY = key.getY() + key.getHeight() * 0.5f;
+        final float dx = keyCenterX
                 - getAnimatedKeyCenterX();
-        final float dy = key.getY() + key.getHeight() * 0.5f
+        final float dy = keyCenterY
                 - getAnimatedKeyCenterY();
         final float distance = Math.max(1.0f, (float)Math.hypot(dx, dy));
+        final float proximity = getKeyProximity(key);
+        final float liftProgress = getLiftProgress();
         final float push = mAnimatedKey.getDrawWidth() * KEY_PUSH_RATIO
-                * getKeyProximity(key) * getLiftProgress();
-        return dx / distance * push;
+                * proximity * liftProgress;
+        // Keys sharing a row part more strongly. This keeps the whole top row visibly
+        // clearing the lifted tile. The alignment is measured from the tile's live
+        // animated center, so the spreading band travels upward with it.
+        final float rowAlignment = Math.max(0.0f, 1.0f
+                - Math.abs(dy) / Math.max(1.0f, key.getHeight() * 1.25f));
+        final float rowSpread = Math.signum(dx) * mAnimatedKey.getDrawWidth()
+                * SAME_ROW_SPREAD_RATIO * proximity * liftProgress * rowAlignment;
+        return dx / distance * push + rowSpread;
     }
 
     private float getRadialPushY(@Nonnull final Key key) {
@@ -957,14 +984,24 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         if (key.getCode() == Constants.CODE_SPACE) {
             return 0.0f;
         }
-        final float dx = key.getDrawX() + key.getDrawWidth() * 0.5f
+        final float keyCenterX = key.getDrawX() + key.getDrawWidth() * 0.5f;
+        final float keyCenterY = key.getY() + key.getHeight() * 0.5f;
+        final float dx = keyCenterX
                 - getAnimatedKeyCenterX();
-        final float dy = key.getY() + key.getHeight() * 0.5f
+        final float dy = keyCenterY
                 - getAnimatedKeyCenterY();
         final float distance = Math.max(1.0f, (float)Math.hypot(dx, dy));
+        final float proximity = getKeyProximity(key);
+        final float liftProgress = getLiftProgress();
         final float push = mAnimatedKey.getDrawWidth() * KEY_PUSH_RATIO
-                * getKeyProximity(key) * getLiftProgress();
-        return dy / distance * push;
+                * proximity * liftProgress;
+        // Keys currently below the moving tile recede, including the bottom row. This
+        // also follows the live animated center rather than the tile's starting row.
+        final float below = Math.max(0.0f, Math.min(1.0f,
+                dy / Math.max(1.0f, mAnimatedKey.getHeight())));
+        final float recess = mAnimatedKey.getHeight() * LOWER_ROW_RECESS_RATIO
+                * proximity * liftProgress * below;
+        return dy / distance * push + recess;
     }
 
     @Override
@@ -994,9 +1031,9 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     protected float getKeyVisualTranslationY(@Nonnull final Key key) {
         final Keyboard keyboard = getKeyboard();
         final float desired = getRadialPushY(key);
-        // The selected tile is drawn in the full-window preview layer, so it can rise
-        // above the keyboard without being clipped by this view's bounds.
-        if (key == mAnimatedKey || keyboard == null) {
+        // Animated tiles are drawn in the full-window preview layer, so edge rows can
+        // move beyond the keyboard without being clipped by this view's bounds.
+        if (shouldDrawInAnimationOverlay(key) || keyboard == null) {
             return desired;
         }
         final float growth = getKeyVisualScale(key) - 1.0f;
@@ -1011,7 +1048,13 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
 
     @Override
     protected boolean shouldDrawKeyInBaseLayer(@Nonnull final Key key) {
-        return key != mAnimatedKey || mKeyScaleProgress <= 0.0f;
+        return !shouldDrawInAnimationOverlay(key);
+    }
+
+    private boolean shouldDrawInAnimationOverlay(@Nonnull final Key key) {
+        return mAnimatedKey != null && mKeyScaleProgress > 0.0f
+                && key.getCode() != Constants.CODE_SPACE
+                && (key == mAnimatedKey || getKeyProximity(key) > 0.001f);
     }
 
     @Override

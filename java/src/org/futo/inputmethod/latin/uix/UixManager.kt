@@ -521,6 +521,22 @@ class UixActionKeyboardManager(val uixManager: UixManager, val latinIME: LatinIM
         uixManager.dismissQuickClips()
     }
 
+    override fun getSelectedOrCurrentWord(): String? {
+        val connection = latinIME.currentInputConnection ?: return null
+        connection.getSelectedText(0)?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            return it
+        }
+
+        val before = connection.getTextBeforeCursor(64, 0)?.toString().orEmpty()
+        val after = connection.getTextAfterCursor(64, 0)?.toString().orEmpty()
+        val isWordCharacter: (Char) -> Boolean = {
+            it.isLetterOrDigit() || it == '\'' || it == '-' || it == '_'
+        }
+        val left = before.takeLastWhile(isWordCharacter)
+        val right = after.takeWhile(isWordCharacter)
+        return (left + right).takeIf { it.isNotBlank() }
+    }
+
     override fun getSizingCalculator(): KeyboardSizingCalculator =
         latinIME.sizingCalculator
 
@@ -1718,5 +1734,4 @@ class UixManager(private val latinIME: LatinIME) {
     val extraTopTouchHeight: Int
         get() = if(floatingPreeditShown) floatingPreeditHeight.value else 0
 }
-
 

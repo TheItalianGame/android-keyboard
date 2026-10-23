@@ -43,6 +43,8 @@ import org.futo.inputmethod.latin.common.InputPointers;
 import org.futo.inputmethod.latin.define.DebugFlags;
 import org.futo.inputmethod.latin.settings.Settings;
 import org.futo.inputmethod.latin.settings.SettingsValues;
+import org.futo.inputmethod.latin.uix.DataStoreHelper;
+import org.futo.inputmethod.latin.uix.settings.pages.PowerTypingSettings;
 import org.futo.inputmethod.latin.utils.ResourceUtils;
 import org.futo.inputmethod.v2keyboard.Direction;
 
@@ -977,9 +979,17 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             if(allowedBySettings) {
                 int pointerStep = sPointerStep;
                 boolean useY = false;
+                final boolean enhancedCursor = DataStoreHelper.getSetting(
+                        PowerTypingSettings.EnhancedCursor);
+                final float verticalDelta = y - mStartY;
+                final float modeThreshold = oldKey.getHeight() * 0.28f;
+                final boolean stepOverWords = enhancedCursor && verticalDelta < -modeThreshold;
+                final boolean select = enhancedCursor && verticalDelta > modeThreshold;
                 if (settingsValues.mSpacebarSwipeMode == Settings.SPACEBAR_MODE_LANGUAGE && !mSpacebarLongPressed) {
                     pointerStep = sPointerHugeStep;
                     useY = oldKey.getUseVerticalSwipe();
+                } else if (stepOverWords) {
+                    pointerStep = sPointerBigStep;
                 }
 
 
@@ -996,7 +1006,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
                     } else if(steps != 0) {
                         mCursorMoved = true;
                         mStartX += steps * pointerStep;
-                        sListener.onMovePointer(steps);
+                        sListener.onMovePointer(steps, stepOverWords, select);
                     }
                 }
 
@@ -1377,6 +1387,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             return;
         }
 
+        mKeyDetector.recordTouch(key, x, y);
         final int code = key.getCode();
         callListenerOnCodeInput(key, code, x, y, eventTime, false /* isKeyRepeat */);
         callListenerOnRelease(key, code, false /* withSliding */);
@@ -1399,6 +1410,9 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             return;
         }
         mCurrentRepeatingKeyCode = code;
+        if (code == Constants.CODE_DELETE) {
+            mKeyDetector.recordRepeatedBackspaceForCorrection();
+        }
         mIsDetectingGesture = false;
         final int nextRepeatCount = repeatCount + 1;
         startKeyRepeatTimer(code, nextRepeatCount);
